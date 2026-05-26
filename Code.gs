@@ -54,7 +54,10 @@ function doGet() {
 // MAIN DATA BUILDER
 // ============================================================
 function buildDashboardData() {
+  // Force fresh data on every load — bypasses Apps Script's server-side cache
+  SpreadsheetApp.flush();
   const ss       = SpreadsheetApp.getActiveSpreadsheet();
+  ss.getActiveSheet(); // nudge the spreadsheet service to reload
   const accounts = readSheet(ss, SHEETS.ACCOUNTS);
   const history  = readSheet(ss, SHEETS.HISTORY);
   const txns     = readSheet(ss, SHEETS.TXNS);
@@ -152,7 +155,8 @@ function summary(accounts) {
       base += v;
     }
 
-    // KPI breakdown tiles — still category-driven for display
+    // KPI breakdown tiles — respect column F just like net worth
+    if (!include) return;
     switch (String(a.Category || '').trim()) {
       case 'Euro':
       case 'Savings A/C':
