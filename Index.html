@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<base target="_top">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#a3cca0" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<title>Family Treasury</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #a3cca0; --bg-tint: #b6d6b3; --card: #ffffff; --card-inner: #f6f8f4;
+    --border: #e8ece6; --border-strong: #d4dad0;
+    --text: #1a1d1f; --text-dim: #4b5563; --text-muted: #8a8f96;
+    --green: #22c55e; --green-deep: #15803d; --green-soft: #dcfce7;
+    --orange: #f97316; --orange-deep: #ea580c; --orange-soft: #ffedd5;
+    --red: #ef4444; --red-deep: #b91c1c; --red-soft: #fee2e2;
+    --gold: #eab308; --purple: #8b5cf6; --slate: #64748b; --dark: #1a1d1f;
+    --shadow-md: 0 4px 12px rgba(26,29,31,0.06), 0 2px 4px rgba(26,29,31,0.04);
+  }
+  * { -webkit-tap-highlight-color: transparent; }
+  html, body { background: var(--bg); color: var(--text); font-family: 'Manrope', -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+  body { min-height: 100vh; }
+  .num { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum', 'zero'; }
+  .card { background: var(--card); border-radius: 22px; box-shadow: var(--shadow-md); }
+  .card-inner { background: var(--card-inner); border-radius: 14px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pill-green { background: var(--green-soft); color: var(--green-deep); }
+  .pill-orange { background: var(--orange-soft); color: var(--orange-deep); }
+  .pill-red { background: var(--red-soft); color: var(--red-deep); }
+  .pill-slate { background: #f1f5f9; color: var(--slate); }
+  .pill-gold { background: #fef3c7; color: #92400e; }
+  .pill-neutral { background: #f1f5f9; color: var(--text-dim); }
+  .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+  .tab-btn { padding: 8px 16px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--text-dim); transition: all 0.2s; cursor: pointer; border: 1px solid transparent; background: transparent; }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { background: var(--dark); color: #ffffff; }
+  .pulse-ring { position: relative; }
+  .pulse-ring::after { content: ''; position: absolute; inset: -4px; border-radius: 999px; background: var(--dark); opacity: 0.3; animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { transform: scale(0.8); opacity: 0; } 50% { transform: scale(1.4); opacity: 0.25; } }
+  .reveal { opacity: 0; transform: translateY(8px); animation: reveal 0.7s ease-out forwards; }
+  .reveal-1 { animation-delay: 0.05s; } .reveal-2 { animation-delay: 0.15s; }
+  .reveal-3 { animation-delay: 0.25s; } .reveal-4 { animation-delay: 0.35s; } .reveal-5 { animation-delay: 0.45s; }
+  @keyframes reveal { to { opacity: 1; transform: translateY(0); } }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+  .hbar { position: relative; height: 6px; background: var(--card-inner); border-radius: 999px; overflow: hidden; }
+  .hbar > span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; }
+  .acct-row { display: grid; grid-template-columns: 1fr auto; padding: 14px 18px; border-top: 1px solid var(--border); align-items: center; }
+  .acct-row:hover { background: var(--card-inner); }
+  details > summary { list-style: none; cursor: pointer; user-select: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details[open] .chev { transform: rotate(90deg); }
+  .chev { transition: transform 0.2s; }
+  .section-label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--text-muted); }
+  canvas { display: block; }
+  .chart-wrap { position: relative; height: 260px; width: 100%; }
+  .chart-wrap-sm { position: relative; height: 220px; width: 100%; }
+  @media (max-width: 640px) {
+    .chart-wrap { height: 200px; }
+    .chart-wrap-sm { height: 180px; }
+  }
+  .hero-num { font-family: 'Manrope', sans-serif; font-weight: 800; letter-spacing: -0.04em; line-height: 0.95; color: var(--text); }
+  .alloc-item { display: grid; grid-template-columns: 14px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .alloc-item:last-child { border-bottom: none; }
+  .avatar { width: 38px; height: 38px; border-radius: 999px; background: var(--dark); display: grid; place-items: center; color: var(--orange); font-weight: 800; font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  @media (max-width: 640px) { .hero-num { font-size: 48px !important; } }
+
+  /* Real estate toggle */
+  .re-toggle-wrap {
+    display: inline-flex; align-items: center; gap-gap: 0;
+    background: var(--card-inner); border: 1px solid var(--border);
+    border-radius: 999px; padding: 6px 14px 6px 8px;
+    gap: 10px; cursor: pointer; user-select: none;
+    transition: border-color 0.2s;
+  }
+  .re-toggle-wrap:hover { border-color: var(--border-strong); }
+  .re-toggle-track {
+    width: 36px; height: 20px; border-radius: 999px;
+    background: var(--border-strong);
+    position: relative; transition: background 0.25s; flex-shrink: 0;
+  }
+  .re-toggle-track.on { background: var(--slate); }
+  .re-toggle-thumb {
+    position: absolute; top: 3px; left: 3px;
+    width: 14px; height: 14px; border-radius: 999px;
+    background: #fff; transition: transform 0.25s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+  }
+  .re-toggle-track.on .re-toggle-thumb { transform: translateX(16px); }
+  .re-toggle-label { font-size: 12px; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
+  .re-toggle-wrap.on .re-toggle-label { color: var(--text); }
+  .re-amount { font-size: 11px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body class="pb-16">
+
+<header class="sticky top-0 z-30" style="background: rgba(163,204,160,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="avatar">F</div>
+      <div>
+        <div class="text-[15px] leading-tight" style="font-weight: 800;">Family Treasury</div>
+        <div class="text-[11px]" style="color: var(--dark); opacity: 0.65; font-weight: 500;">Hiral &amp; Divyang · family</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex items-center gap-2 text-[11px]" style="color: var(--dark); font-weight: 500;">
+        <span class="pulse-ring dot" style="background: var(--dark);"></span>
+        <span>Live · Sheets</span>
+      </div>
+      <button id="headerDate" class="text-[12px] px-3 py-1.5 rounded-full" style="background: var(--card); color: var(--text); font-weight: 600;"></button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
+
+  <section class="reveal reveal-1 mb-5">
+    <div class="card p-6 sm:p-8">
+      <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
+        <div>
+          <div class="section-label mb-3">Net Worth · INR</div>
+          <div class="hero-num text-[64px] sm:text-[88px]">₹<span id="heroNetWorth"></span></div>
+
+          <!-- Pills row -->
+          <div class="flex flex-wrap items-center gap-2 mt-4">
+            <span id="heroChange" class="pill"></span>
+            <span id="heroEur" class="pill pill-neutral"></span>
+          </div>
+
+          <!-- Real estate toggle -->
+          <div class="mt-4">
+            <label id="reToggleWrap" class="re-toggle-wrap on" onclick="toggleRealEstate()">
+              <div id="reToggleTrack" class="re-toggle-track on">
+                <div class="re-toggle-thumb"></div>
+              </div>
+              <span class="re-toggle-label">Including Real Estate</span>
+              <span id="reToggleAmt" class="re-amount"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="hidden sm:block w-px self-stretch" style="background: var(--border);"></div>
+
+        <div class="grid grid-cols-2 gap-3 sm:w-[380px]">
+          <div class="card-inner p-3.5"><div class="section-label mb-1.5">Liquid</div><div id="kpiLiquid" class="num text-lg" style="font-weight: 800;"></div><div id="kpiLiquidPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div></div>
+          <div class="card-inner p-3.5"><div class="section-label mb-1.5">Invested</div><div id="kpiInvested" class="num text-lg" style="font-weight: 800;"></div><div id="kpiInvestedPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div></div>
+          <div class="card-inner p-3.5"><div class="section-label mb-1.5">Gold</div><div id="kpiGold" class="num text-lg" style="font-weight: 800;"></div><div id="kpiGoldPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div></div>
+          <div class="card-inner p-3.5"><div class="section-label mb-1.5" style="color: var(--orange-deep);">Card debt</div><div id="kpiDebt" class="num text-lg" style="font-weight: 800; color: var(--orange-deep);"></div><div id="kpiDebtCount" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div></div>
+          <div class="card-inner p-3.5" style="grid-column: span 2; border: 1px dashed var(--border-strong);"><div class="flex items-center gap-2 mb-1.5"><span class="section-label" style="color: var(--slate);">Disputed · under recovery</span><span class="pill pill-slate" style="font-size:10px; padding: 2px 8px;">Excluded from net worth</span></div><div id="kpiDisputed" class="num text-lg" style="font-weight: 800; color: var(--slate);"></div><div class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;">Falcon · money lent, outcome pending</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="reveal reveal-2 mb-5">
+    <div class="card p-5 sm:p-7">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div><div class="section-label">Trajectory</div><div class="text-2xl mt-0.5" style="font-weight: 800;">Wealth over time</div></div>
+        <div class="flex items-center gap-1 p-1 rounded-full" style="background: var(--card-inner);">
+          <button class="tab-btn">3M</button><button class="tab-btn active">6M</button><button class="tab-btn">1Y</button><button class="tab-btn">All</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="reveal reveal-3 grid grid-cols-1 lg:grid-cols-5 gap-5 mb-5">
+    <div class="card p-5 sm:p-6 lg:col-span-2">
+      <div class="section-label mb-1">Allocation</div>
+      <div class="text-2xl mb-5" style="font-weight: 800;">By asset class</div>
+      <div class="relative grid place-items-center mb-2">
+        <canvas id="donut" width="220" height="220"></canvas>
+        <div class="absolute inset-0 grid place-items-center pointer-events-none">
+          <div class="text-center">
+            <div class="text-[10px] tracking-widest" style="color: var(--text-muted); font-weight: 700;">CLASSES</div>
+            <div id="donutCenter" class="text-2xl mt-0.5" style="font-weight: 800;"></div>
+          </div>
+        </div>
+      </div>
+      <div id="donutLegend" class="mt-4"></div>
+    </div>
+    <div class="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-5">
+      <div class="card p-5">
+        <div class="section-label mb-1">Currency exposure</div>
+        <div class="text-2xl mb-4" style="font-weight: 800;">INR vs EUR</div>
+        <div class="space-y-4">
+          <div>
+            <div class="flex justify-between items-baseline mb-2">
+              <div class="flex items-center gap-2"><span class="dot" style="background: var(--green);"></span><span class="text-sm" style="font-weight: 700;">Indian Rupees</span><span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">INR</span></div>
+              <span id="ccyInrPct" class="num text-sm" style="font-weight: 700;"></span>
+            </div>
+            <div class="hbar"><span id="ccyInrBar" style="background: var(--green);"></span></div>
+            <div id="ccyInrAmt" class="text-[11px] num mt-1.5" style="color: var(--text-muted); font-weight: 500;"></div>
+          </div>
+          <div>
+            <div class="flex justify-between items-baseline mb-2">
+              <div class="flex items-center gap-2"><span class="dot" style="background: var(--orange);"></span><span class="text-sm" style="font-weight: 700;">Euro</span><span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">EUR</span></div>
+              <span id="ccyEurPct" class="num text-sm" style="font-weight: 700;"></span>
+            </div>
+            <div class="hbar"><span id="ccyEurBar" style="background: var(--orange);"></span></div>
+            <div id="ccyEurAmt" class="text-[11px] num mt-1.5" style="color: var(--text-muted); font-weight: 500;"></div>
+          </div>
+        </div>
+        <div class="mt-5 pt-4 flex items-center justify-between text-[11px]" style="border-top: 1px solid var(--border);">
+          <span style="color: var(--text-muted); font-weight: 500;">EUR → INR rate</span>
+          <span id="ccyRate" class="num" style="font-weight: 700;"></span>
+        </div>
+      </div>
+      <div class="card p-5">
+        <div class="section-label mb-1">Per holder</div>
+        <div class="text-2xl mb-4" style="font-weight: 800;">Asset attribution</div>
+        <div id="holderList" class="space-y-3.5"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="reveal reveal-4 mb-5">
+    <div class="card p-5 sm:p-7">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div><div class="section-label">Cash flow</div><div class="text-2xl mt-0.5" style="font-weight: 800;">Income vs Expense · monthly (€)</div></div>
+        <div class="flex items-center gap-3 text-[11px]" style="font-weight: 600;"><span class="flex items-center gap-1.5" style="color: var(--green-deep);"><span class="dot" style="background: var(--green);"></span>Income</span><span class="flex items-center gap-1.5" style="color: var(--orange-deep);"><span class="dot" style="background: var(--orange);"></span>Expense</span></div>
+      </div>
+      <div class="chart-wrap chart-wrap-sm"><canvas id="flowChart"></canvas></div>
+      <div class="grid grid-cols-3 gap-3 mt-5">
+        <div class="card-inner p-3.5"><div class="section-label">Avg income</div><div id="kpiAvgInc" class="num text-lg mt-1" style="font-weight: 800;"></div></div>
+        <div class="card-inner p-3.5"><div class="section-label">Avg expense</div><div id="kpiAvgExp" class="num text-lg mt-1" style="font-weight: 800;"></div></div>
+        <div class="card-inner p-3.5"><div class="section-label">Savings rate</div><div id="kpiSavings" class="num text-lg mt-1" style="font-weight: 800; color: var(--green-deep);"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="reveal reveal-4 grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+    <div class="card p-5 sm:p-6"><div class="section-label mb-1">Income sources</div><div class="text-2xl mb-5" style="font-weight: 800;">Last 12 months</div><div id="incomeList" class="space-y-4"></div></div>
+    <div class="card p-5 sm:p-6"><div class="section-label mb-1">Expense categories</div><div class="text-2xl mb-5" style="font-weight: 800;">Last 12 months</div><div id="expenseList" class="space-y-4"></div></div>
+  </section>
+
+  <section class="reveal reveal-5 mb-5">
+    <div class="card p-5 sm:p-7">
+      <div class="section-label mb-1">All accounts</div>
+      <div class="flex items-baseline justify-between mb-5">
+        <div class="text-2xl" style="font-weight: 800;">By category</div>
+        <div id="accountsMeta" class="text-[11px]" style="color: var(--text-muted); font-weight: 500;"></div>
+      </div>
+      <div id="accountsList" class="space-y-3"></div>
+    </div>
+  </section>
+
+  <section class="reveal reveal-5 mb-5">
+    <div class="card p-5 sm:p-7"><div class="section-label mb-1">Activity</div><div class="text-2xl mb-5" style="font-weight: 800;">Recent transactions</div><div id="txnList"></div></div>
+  </section>
+
+  <footer class="text-center text-[11px] mt-10 mb-8" style="color: var(--dark); opacity: 0.7; font-weight: 500;">
+    Data source · Google Sheet · refreshes on load<br>
+    <span class="opacity-70">Add to Home Screen on iOS · Install as App on Android</span>
+  </footer>
+</main>
+
+<script>
+const DATA = <?!= data ?>;
+
+// ── Formatters ───────────────────────────────────────────────
+const fmtINR = n => {
+  if (!n) return '₹0';
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '−' : '';
+  let s;
+  if (abs >= 10000000) s = (abs/10000000).toFixed(2) + ' Cr';
+  else if (abs >= 100000) s = (abs/100000).toFixed(2) + ' L';
+  else s = abs.toLocaleString('en-IN');
+  return sign + '₹' + s;
+};
+const fmtINRplain = n => !n ? '0' : Math.abs(Math.round(n)).toLocaleString('en-IN');
+const fmtCcy = (n, ccy) => {
+  const symbol = ccy === 'EUR' ? '€' : '₹';
+  const locale = ccy === 'EUR' ? 'de-DE' : 'en-IN';
+  return (n<0?'−':'') + symbol + Math.abs(n).toLocaleString(locale, {maximumFractionDigits: ccy==='EUR'?2:0});
+};
+
+Chart.defaults.color = '#8a8f96';
+Chart.defaults.font.family = "'Manrope', sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.font.weight = '500';
+Chart.defaults.borderColor = '#e8ece6';
+
+// ── Header date ──────────────────────────────────────────────
+const asOf = new Date(DATA.asOf);
+document.getElementById('headerDate').textContent = asOf.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+// ── Real estate toggle ───────────────────────────────────────
+let includeRealEstate = true; // default ON
+
+function updateHeroNumber() {
+  const total = includeRealEstate
+    ? DATA.summary.total                              // base + realEstate
+    : DATA.summary.base;                              // base only
+  document.getElementById('heroNetWorth').textContent = fmtINRplain(total);
+  document.getElementById('heroEur').textContent = '≈ €' + Math.round(total / (DATA.eurRate || 112)).toLocaleString('de-DE');
+}
+
+function toggleRealEstate() {
+  includeRealEstate = !includeRealEstate;
+  const track = document.getElementById('reToggleTrack');
+  const wrap  = document.getElementById('reToggleWrap');
+  const label = wrap.querySelector('.re-toggle-label');
+  if (includeRealEstate) {
+    track.classList.add('on');
+    wrap.classList.add('on');
+    label.textContent = 'Including Real Estate';
+  } else {
+    track.classList.remove('on');
+    wrap.classList.remove('on');
+    label.textContent = 'Excluding Real Estate';
+  }
+  updateHeroNumber();
+}
+
+// Set the toggle amount label (shown always, e.g. "₹1.25 Cr")
+document.getElementById('reToggleAmt').textContent = fmtINR(DATA.summary.realEstate);
+
+// Initial hero render
+updateHeroNumber();
+
+// ── Hero change pill ─────────────────────────────────────────
+{
+  const tr = DATA.trend;
+  const chip = document.getElementById('heroChange');
+  if (tr.length >= 2) {
+    const delta = tr[tr.length - 1].total - tr[0].total;
+    const positive = delta >= 0;
+    const pct = tr[0].total ? (delta / tr[0].total * 100) : 0;
+    chip.className = 'pill ' + (positive ? 'pill-green' : 'pill-orange');
+    const arrow = positive
+      ? '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 8 L6 4 L10 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      : '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 4 L6 8 L10 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const sign = positive ? '+' : '−';
+    chip.innerHTML = `${arrow} ${sign}${Math.abs(pct).toFixed(1)}% · ${tr.length} snapshots`;
+  } else {
+    chip.style.display = 'none';
+  }
+}
+
+// ── KPI tiles ────────────────────────────────────────────────
+{
+  const s = DATA.summary;
+  const base = s.total; // always use full total for % context
+  const pct = v => base ? (v / base * 100).toFixed(1) + '%' : '—';
+  document.getElementById('kpiLiquid').textContent = fmtINR(s.liquid);
+  document.getElementById('kpiLiquidPct').textContent = pct(s.liquid) + ' of total';
+  document.getElementById('kpiInvested').textContent = fmtINR(s.invested);
+  document.getElementById('kpiInvestedPct').textContent = pct(s.invested) + ' of total';
+  document.getElementById('kpiGold').textContent = fmtINR(s.gold);
+  document.getElementById('kpiGoldPct').textContent = pct(s.gold) + ' of total';
+  document.getElementById('kpiDebt').textContent = fmtINR(s.debt);
+  const debtCount = (DATA.accounts['Debt (credit cards)'] || []).length;
+  document.getElementById('kpiDebtCount').textContent = debtCount ? `${debtCount} cards` : '—';
+  document.getElementById('kpiDisputed').textContent = fmtINR(s.disputed || 0);
+}
+
+// ── Trend chart ──────────────────────────────────────────────
+{
+  const ctx = document.getElementById('trendChart');
+  const grad = ctx.getContext('2d').createLinearGradient(0, 0, 0, 240);
+  grad.addColorStop(0, 'rgba(34, 197, 94, 0.28)');
+  grad.addColorStop(1, 'rgba(34, 197, 94, 0)');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: DATA.trend.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })),
+      datasets: [{
+        data: DATA.trend.map(d => d.total),
+        borderColor: '#22c55e', backgroundColor: grad,
+        borderWidth: 3, fill: true, tension: 0.4,
+        pointRadius: 0, pointHoverRadius: 7,
+        pointHoverBackgroundColor: '#1a1d1f', pointHoverBorderColor: '#ffffff', pointHoverBorderWidth: 3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: '#1a1d1f', borderWidth: 0, padding: { x: 12, y: 8 }, cornerRadius: 10, titleColor: '#ffffff', bodyColor: '#22c55e', bodyFont: { weight: '700' }, callbacks: { label: c => '  ' + fmtINR(c.parsed.y) } }
+      },
+      scales: {
+        x: { grid: { display: false }, border: { display: false } },
+        y: { grid: { color: '#e8ece6' }, border: { display: false }, ticks: { callback: v => fmtINR(v) } }
+      }
+    }
+  });
+}
+
+// ── Donut chart ──────────────────────────────────────────────
+{
+  const positive = DATA.allocation.filter(a => a.value > 0);
+  document.getElementById('donutCenter').textContent = positive.length;
+  new Chart(document.getElementById('donut'), {
+    type: 'doughnut',
+    data: { labels: positive.map(a => a.label), datasets: [{ data: positive.map(a => a.value), backgroundColor: positive.map(a => a.color), borderColor: '#ffffff', borderWidth: 4, hoverOffset: 8 }] },
+    options: { responsive: false, cutout: '74%',
+      plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1a1d1f', borderWidth: 0, padding: { x: 12, y: 8 }, cornerRadius: 10, titleColor: '#ffffff', bodyColor: '#ffffff', callbacks: { label: c => '  ' + c.label + ' · ' + fmtINR(c.parsed) } } }
+    }
+  });
+  const sum = positive.reduce((s,a) => s + a.value, 0);
+  document.getElementById('donutLegend').innerHTML = positive.sort((a,b) => b.value - a.value).map(a => `
+    <div class="alloc-item">
+      <span class="dot" style="background: ${a.color};"></span>
+      <span class="text-sm" style="font-weight: 600;">${a.label}</span>
+      <span class="num text-sm" style="color: var(--text-dim); font-weight: 700;">${(a.value/sum*100).toFixed(1)}%</span>
+    </div>`).join('');
+}
+
+// ── Currency split ───────────────────────────────────────────
+{
+  const c = DATA.currencySplit;
+  const tot = c.inr + c.eur;
+  const inrPct = tot ? c.inr/tot*100 : 0;
+  const eurPct = tot ? c.eur/tot*100 : 0;
+  document.getElementById('ccyInrPct').textContent = inrPct.toFixed(1) + '%';
+  document.getElementById('ccyEurPct').textContent = eurPct.toFixed(1) + '%';
+  document.getElementById('ccyInrBar').style.width = inrPct + '%';
+  document.getElementById('ccyEurBar').style.width = eurPct + '%';
+  document.getElementById('ccyInrAmt').textContent = fmtINR(c.inr);
+  document.getElementById('ccyEurAmt').textContent = '€' + Math.round(c.eur / (DATA.eurRate || 112)).toLocaleString('de-DE') + ' · ' + fmtINR(c.eur);
+  document.getElementById('ccyRate').textContent = '₹' + (DATA.eurRate || 0).toFixed(2);
+}
+
+// ── Per holder ───────────────────────────────────────────────
+{
+  const p = DATA.perHolder;
+  const items = [
+    { label: 'Hiral',       value: p.hiral,   color: '#22c55e' },
+    { label: 'Divyang',     value: p.divyang, color: '#15803d' },
+    { label: 'Family pool', value: p.family,  color: '#f97316' },
+    { label: 'Debt',        value: p.debt,    color: '#ef4444', neg: true }
+  ];
+  const max = Math.max(...items.map(i => Math.abs(i.value)), 1);
+  document.getElementById('holderList').innerHTML = items.map(i => `
+    <div>
+      <div class="flex justify-between items-baseline mb-1.5">
+        <span class="text-sm" style="font-weight: 700; ${i.neg ? 'color: var(--red-deep);' : ''}">${i.label}</span>
+        <span class="num text-sm" style="font-weight: 700; ${i.neg ? 'color: var(--red-deep);' : ''}">${i.neg && i.value < 0 ? '−' : ''}${fmtINR(Math.abs(i.value))}</span>
+      </div>
+      <div class="hbar"><span style="width: ${(Math.abs(i.value)/max*100).toFixed(1)}%; background: ${i.color};"></span></div>
+    </div>`).join('');
+}
+
+// ── Cash flow chart ──────────────────────────────────────────
+{
+  const cf = DATA.cashflow;
+  new Chart(document.getElementById('flowChart'), {
+    type: 'bar',
+    data: { labels: cf.map(d => d.m), datasets: [
+      { label: 'Income', data: cf.map(d => d.inc), backgroundColor: '#22c55e', borderRadius: 6, barPercentage: 0.7, categoryPercentage: 0.7 },
+      { label: 'Expense', data: cf.map(d => d.exp), backgroundColor: '#f97316', borderRadius: 6, barPercentage: 0.7, categoryPercentage: 0.7 }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1a1d1f', borderWidth: 0, padding: { x: 12, y: 8 }, cornerRadius: 10, titleColor: '#ffffff', bodyColor: '#ffffff', callbacks: { label: c => '  ' + c.dataset.label + ': €' + c.parsed.y.toLocaleString('de-DE') } } },
+      scales: { x: { grid: { display: false }, border: { display: false } }, y: { grid: { color: '#e8ece6' }, border: { display: false }, ticks: { callback: v => '€' + (v/1000).toFixed(0) + 'k' } } }
+    }
+  });
+  const avgInc = cf.length ? cf.reduce((s,d) => s + d.inc, 0) / cf.length : 0;
+  const avgExp = cf.length ? cf.reduce((s,d) => s + d.exp, 0) / cf.length : 0;
+  document.getElementById('kpiAvgInc').textContent = '€' + Math.round(avgInc).toLocaleString('de-DE');
+  document.getElementById('kpiAvgExp').textContent = '€' + Math.round(avgExp).toLocaleString('de-DE');
+  document.getElementById('kpiSavings').textContent = avgInc ? ((avgInc - avgExp) / avgInc * 100).toFixed(1) + '%' : '—';
+}
+
+// ── Income / expense breakdown ───────────────────────────────
+function renderBreakdown(elId, items, unit) {
+  if (!items.length) { document.getElementById(elId).innerHTML = '<div class="text-sm" style="color: var(--text-muted);">No data in the last 12 months.</div>'; return; }
+  const total = items.reduce((s,i) => s + i.amt, 0);
+  const max = Math.max(...items.map(i => i.amt));
+  document.getElementById(elId).innerHTML = items.sort((a,b) => b.amt - a.amt).map(i => `
+    <div>
+      <div class="flex items-baseline justify-between mb-1.5">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="dot shrink-0" style="background: ${i.color};"></span>
+          <span class="text-sm truncate" style="font-weight: 600;">${i.cat}</span>
+        </div>
+        <div class="text-right shrink-0 pl-3">
+          <div class="num text-sm" style="font-weight: 700;">${unit}${i.amt.toLocaleString('de-DE')}</div>
+          <div class="text-[10px]" style="color: var(--text-muted); font-weight: 600;">${(i.amt/total*100).toFixed(1)}%</div>
+        </div>
+      </div>
+      <div class="hbar"><span style="width: ${(i.amt/max*100).toFixed(1)}%; background: ${i.color};"></span></div>
+    </div>`).join('');
+}
+renderBreakdown('incomeList', DATA.income, '€');
+renderBreakdown('expenseList', DATA.expense, '€');
+
+// ── Account groups ───────────────────────────────────────────
+{
+  const colors = {
+    'Euro bank accounts': '#f97316', 'INR savings accounts': '#22c55e', 'Stocks & IPO': '#15803d',
+    'Gold': '#eab308', 'Real estate': '#64748b', 'Debt (credit cards)': '#ef4444', 'Other': '#94a3b8'
+  };
+  const entries = Object.entries(DATA.accounts);
+  const totalAccts = entries.reduce((s, [_,v]) => s + v.length, 0);
+  document.getElementById('accountsMeta').textContent = `${totalAccts} accounts · tap to expand`;
+  document.getElementById('accountsList').innerHTML = entries.map(([cat, accs], idx) => {
+    const t = accs.reduce((s,a) => s + a.inr, 0);
+    const rows = accs.map(a => `
+      <div class="acct-row">
+        <div>
+          <div class="text-sm" style="font-weight: 600;">${a.name}</div>
+          <div class="text-[11px] num mt-0.5" style="color: var(--text-muted); font-weight: 500;">${fmtCcy(a.bal, a.ccy)}${a.ccy==='EUR' ? ` · ${fmtINR(a.inr)}` : ''}</div>
+        </div>
+        <div class="num text-sm" style="font-weight: 700; color: ${a.inr < 0 ? 'var(--red-deep)' : 'var(--text)'};">${fmtINR(a.inr)}</div>
+      </div>`).join('');
+    return `
+      <details ${idx === 0 ? 'open' : ''} class="card-inner">
+        <summary class="px-5 py-4 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <svg class="chev w-3 h-3" viewBox="0 0 12 12" style="color: var(--text-muted);"><path d="M4 2 L8 6 L4 10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            <span class="dot" style="background: ${colors[cat] || '#94a3b8'};"></span>
+            <span class="text-sm" style="font-weight: 700;">${cat}</span>
+            <span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">${accs.length}</span>
+          </div>
+          <span class="num text-sm" style="font-weight: 700; color: ${t < 0 ? 'var(--red-deep)' : 'var(--text)'};">${fmtINR(t)}</span>
+        </summary>
+        <div>${rows}</div>
+      </details>`;
+  }).join('');
+}
+
+// ── Recent transactions ──────────────────────────────────────
+{
+  const pillClass = { 'Income': 'pill-green', 'Expense': 'pill-orange', 'Transfer': 'pill-slate', 'Remit': 'pill-gold' };
+  const amtColor = { 'Income': 'var(--green-deep)', 'Expense': 'var(--orange-deep)', 'Transfer': 'var(--text)', 'Remit': 'var(--text)' };
+  document.getElementById('txnList').innerHTML = DATA.recentTxns.map(t => {
+    const sign = t.type === 'Expense' ? '−' : t.type === 'Income' ? '+' : '';
+    const parts = t.date.split(' ');
+    return `
+      <div class="flex items-center gap-3 py-3.5" style="border-top: 1px solid var(--border);">
+        <div class="text-center w-12 shrink-0">
+          <div class="text-[10px]" style="color: var(--text-muted); font-weight: 700;">${(parts[0]||'').toUpperCase()}</div>
+          <div class="num text-lg" style="line-height: 1; font-weight: 800;">${parts[1]||''}</div>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-sm truncate" style="font-weight: 600;">${t.note || t.type}</span>
+            <span class="pill ${pillClass[t.type] || 'pill-neutral'}" style="font-size: 10px; padding: 2px 8px;">${t.type}</span>
+          </div>
+          <div class="text-[11px] mt-0.5 truncate" style="color: var(--text-muted); font-weight: 500;">${t.acct}</div>
+        </div>
+        <div class="num text-sm text-right shrink-0" style="font-weight: 700; color: ${amtColor[t.type] || 'var(--text)'};">${sign}${fmtCcy(t.amt, t.ccy)}</div>
+      </div>`;
+  }).join('');
+}
+</script>
+</body>
+</html>
