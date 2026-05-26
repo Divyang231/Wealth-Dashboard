@@ -118,13 +118,17 @@ function isRealEstate(row) {
   return String(row.Category || '').trim() === 'RealEstate';
 }
 
-// Forward-fill Category column
+// Normalise Category column — blank stays blank (blank = excluded from all calculations)
 function fillCategory(rows) {
-  let last = '';
   rows.forEach(r => {
-    if (r.Category && String(r.Category).trim()) last = String(r.Category).trim();
-    else r.Category = last;
+    r.Category = (r.Category && String(r.Category).trim()) ? String(r.Category).trim() : '';
   });
+}
+
+// Returns true only if column B (Category) is filled AND column F (Include in Net Worth) is TRUE
+function isIncluded(row) {
+  if (!row.Category) return false;
+  return includeInNetWorth(row);
 }
 
 function latestEurRate(accounts) {
@@ -145,19 +149,27 @@ function summary(accounts) {
 
   accounts.forEach(a => {
     const v = num(a['INR Gross Balance']);
-    const include = includeInNetWorth(a);
+    const included = isIncluded(a);
 
-    // Accumulate real estate separately regardless of the Include flag
-    // (the flag is the sheet's "default"; the UI toggle overrides it live)
+    // Skip rows with blank Category entirely
+    if (!a.Category) return;
+
+    // Falcon is special — always shown in disputed box but NEVER in net worth total
+    if (a.Category === 'Falcon') {
+      disputed += v;
+      return;
+    }
+
+    // Accumulate real estate separately (UI toggle overrides it live)
     if (isRealEstate(a)) {
-      realEstate += v;
-    } else if (include) {
+      if (includeInNetWorth(a)) realEstate += v;
+    } else if (included) {
       base += v;
     }
 
-    // KPI breakdown tiles — respect column F just like net worth
-    if (!include) return;
-    switch (String(a.Category || '').trim()) {
+    // KPI breakdown tiles — both column B filled AND column F TRUE required
+    if (!included) return;
+    switch (a.Category) {
       case 'Euro':
       case 'Savings A/C':
         liquid += v; break;
@@ -167,8 +179,6 @@ function summary(accounts) {
         invested += v; break;
       case 'Stocks covered in 15':
         break; // skip — already in ID 15 total
-      case 'Falcon':
-        disputed += v; break;
       case 'Gold':
         gold += v; break;
       case 'Debt':
@@ -234,6 +244,8 @@ function allocation(accounts) {
   };
   const sums = {};
   accounts.forEach(a => {
+    if (!a.Category) return;                          // blank column B — skip
+    if (!isIncluded(a) && !isRealEstate(a)) return;  // column F FALSE — skip (keep RealEstate for donut)
     if (a.Category === 'Stocks covered in 15') return;
     const label = labelMap[a.Category] || a.Category || 'Other';
     sums[label] = (sums[label] || 0) + num(a['INR Gross Balance']);
@@ -251,6 +263,7 @@ function allocation(accounts) {
 function currencySplit(accounts) {
   let inr = 0, eur = 0;
   accounts.forEach(a => {
+    if (!isIncluded(a) && !isRealEstate(a)) return; // blank B or FALSE F — skip
     const v = num(a['INR Gross Balance']);
     if (isEur(a.Currency)) eur += v;
     else inr += v;
@@ -264,6 +277,7 @@ function currencySplit(accounts) {
 function perHolder(accounts) {
   let hiral = 0, divyang = 0, family = 0, debt = 0;
   accounts.forEach(a => {
+    if (!isIncluded(a) && !isRealEstate(a)) return; // blank B or FALSE F — skip
     const v = num(a['INR Gross Balance']);
     const name = String(a.Account || '').toLowerCase();
     if (a.Category === 'Debt') debt += v;
@@ -356,6 +370,8 @@ function accountGroups(accounts) {
   const groups = {};
   accounts.forEach(a => {
     if (!a.Account) return;
+    if (!a.Category) return;                          // blank column B — skip
+    if (!isIncluded(a) && !isRealEstate(a)) return;  // column F FALSE — skip
     if (a.Category === 'Stocks covered in 15') return;
     const v = num(a['INR Gross Balance']);
     if (v === 0) return;
