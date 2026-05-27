@@ -153,11 +153,30 @@
         <div class="hidden sm:block w-px self-stretch" style="background: var(--border);"></div>
 
         <div class="grid grid-cols-2 gap-3 sm:w-[380px]">
-          <div class="card-inner p-3.5"><div class="section-label mb-1.5">Liquid</div><div id="kpiLiquid" class="num text-lg" style="font-weight: 800;"></div><div id="kpiLiquidPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div></div>
-          <div class="card-inner p-3.5"><div class="section-label mb-1.5">Invested</div><div id="kpiInvested" class="num text-lg" style="font-weight: 800;"></div><div id="kpiInvestedPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div></div>
-          <div class="card-inner p-3.5"><div class="section-label mb-1.5">Gold</div><div id="kpiGold" class="num text-lg" style="font-weight: 800;"></div><div id="kpiGoldPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div></div>
-          <div class="card-inner p-3.5"><div class="section-label mb-1.5" style="color: var(--orange-deep);">Card debt</div><div id="kpiDebt" class="num text-lg" style="font-weight: 800; color: var(--orange-deep);"></div><div id="kpiDebtCount" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div></div>
-          <div class="card-inner p-3.5" style="grid-column: span 2; border: 1px dashed var(--border-strong);"><div class="flex items-center gap-2 mb-1.5"><span class="section-label" style="color: var(--slate);">Disputed · under recovery</span><span class="pill pill-slate" style="font-size:10px; padding: 2px 8px;">Excluded from net worth</span></div><div id="kpiDisputed" class="num text-lg" style="font-weight: 800; color: var(--slate);"></div><div class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;">Falcon · money lent, outcome pending</div></div>
+          <!-- Liquid — terracotta/panna cotta: signals cash isn't optimal long-term -->
+          <div class="card-inner p-3.5" style="border-left: 12px solid #e8714a;">
+            <div class="section-label mb-1.5">Liquid</div>
+            <div id="kpiLiquid" class="num text-lg" style="font-weight: 800;"></div>
+            <div id="kpiLiquidPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div>
+          </div>
+          <!-- Stocks & MF -->
+          <div class="card-inner p-3.5" style="border-left: 12px solid #15803d;">
+            <div class="section-label mb-1.5">Stocks & MF</div>
+            <div id="kpiStocksMF" class="num text-lg" style="font-weight: 800;"></div>
+            <div id="kpiStocksMFPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div>
+          </div>
+          <!-- Real Estate — pastel brown -->
+          <div class="card-inner p-3.5" style="border-left: 12px solid #c4a882;">
+            <div class="section-label mb-1.5">Real Estate</div>
+            <div id="kpiRealEstate" class="num text-lg" style="font-weight: 800;"></div>
+            <div id="kpiRealEstatePct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div>
+          </div>
+          <!-- Gold -->
+          <div class="card-inner p-3.5" style="border-left: 12px solid #eab308;">
+            <div class="section-label mb-1.5">Gold</div>
+            <div id="kpiGold" class="num text-lg" style="font-weight: 800;"></div>
+            <div id="kpiGoldPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -253,6 +272,91 @@
         <div id="accountsMeta" class="text-[11px]" style="color: var(--text-muted); font-weight: 500;"></div>
       </div>
       <div id="accountsList" class="space-y-3"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════
+       STOCKS & MF DEEP DIVE  —  L1 / L2 / L3
+  ════════════════════════════════════════════════════════ -->
+  <section class="reveal reveal-5 mb-5">
+    <div class="card p-5 sm:p-7">
+
+      <!-- L1 — total headline -->
+      <div class="flex flex-wrap items-start justify-between gap-4 mb-6">
+        <div>
+          <div class="section-label mb-1">Stocks & MF · Deep dive</div>
+          <div class="text-2xl" style="font-weight: 800;">Portfolio breakdown</div>
+        </div>
+        <div class="text-right">
+          <div class="section-label mb-1">Total</div>
+          <div id="smfTotal" class="num text-2xl" style="font-weight: 800;"></div>
+          <div id="smfPL" class="num text-[12px] mt-0.5" style="font-weight: 600;"></div>
+        </div>
+      </div>
+
+      <!-- L2 — Zerodha vs Others side by side -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+
+        <!-- L2 left: Zerodha Family -->
+        <div class="card-inner p-4" style="border-left: 12px solid #15803d;">
+          <div class="section-label mb-1">Zerodha Family · 5 accounts</div>
+          <div id="smfZerodhVal" class="num text-xl mb-0.5" style="font-weight: 800;"></div>
+          <div id="smfZerodhaPL" class="num text-[11px] mb-3" style="font-weight: 600;"></div>
+          <!-- L3 Zerodha expandable -->
+          <details>
+            <summary class="flex items-center gap-2 cursor-pointer select-none text-[12px]" style="font-weight: 700; color: var(--text-dim); list-style: none;">
+              <svg class="chev w-3 h-3 shrink-0" viewBox="0 0 12 12" style="color: var(--text-muted);"><path d="M4 2 L8 6 L4 10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+              Show details
+            </summary>
+            <div class="mt-4 space-y-5">
+
+              <!-- Per-account table -->
+              <div>
+                <div class="section-label mb-2">Per account</div>
+                <div id="smfAcctTable"></div>
+              </div>
+
+              <!-- Asset class + Cap split side by side -->
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <div class="section-label mb-2">Asset class</div>
+                  <div id="smfAssetClass" class="space-y-2"></div>
+                </div>
+                <div>
+                  <div class="section-label mb-2">Market cap</div>
+                  <div id="smfCapSplit" class="space-y-2"></div>
+                </div>
+              </div>
+
+              <!-- Sector breakdown -->
+              <div>
+                <div class="section-label mb-2">Sector breakdown</div>
+                <div id="smfSectors" class="space-y-2"></div>
+              </div>
+
+            </div>
+          </details>
+        </div>
+
+        <!-- L2 right: Others / IPO -->
+        <div class="card-inner p-4" style="border-left: 12px solid #84cc16;">
+          <div class="section-label mb-1">Others · IPO holdings</div>
+          <div id="smfOthersVal" class="num text-xl mb-0.5" style="font-weight: 800;"></div>
+          <div id="smfOthersPL" class="num text-[11px] mb-3" style="font-weight: 600;"></div>
+          <!-- L3 Others expandable -->
+          <details>
+            <summary class="flex items-center gap-2 cursor-pointer select-none text-[12px]" style="font-weight: 700; color: var(--text-dim); list-style: none;">
+              <svg class="chev w-3 h-3 shrink-0" viewBox="0 0 12 12" style="color: var(--text-muted);"><path d="M4 2 L8 6 L4 10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+              Show holdings
+            </summary>
+            <div class="mt-4">
+              <div class="section-label mb-2">Non-Zerodha unsold IPOs</div>
+              <div id="smfIpoList"></div>
+            </div>
+          </details>
+        </div>
+
+      </div>
     </div>
   </section>
 
@@ -352,19 +456,21 @@ updateHeroNumber();
 
 // ── KPI tiles ────────────────────────────────────────────────
 {
-  const s = DATA.summary;
-  const base = s.total; // always use full total for % context
-  const pct = v => base ? (v / base * 100).toFixed(1) + '%' : '—';
-  document.getElementById('kpiLiquid').textContent = fmtINR(s.liquid);
-  document.getElementById('kpiLiquidPct').textContent = pct(s.liquid) + ' of total';
-  document.getElementById('kpiInvested').textContent = fmtINR(s.invested);
-  document.getElementById('kpiInvestedPct').textContent = pct(s.invested) + ' of total';
-  document.getElementById('kpiGold').textContent = fmtINR(s.gold);
-  document.getElementById('kpiGoldPct').textContent = pct(s.gold) + ' of total';
-  document.getElementById('kpiDebt').textContent = fmtINR(s.debt);
-  const debtCount = (DATA.accounts['Debt (credit cards)'] || []).length;
-  document.getElementById('kpiDebtCount').textContent = debtCount ? `${debtCount} cards` : '—';
-  document.getElementById('kpiDisputed').textContent = fmtINR(s.disputed || 0);
+  const s   = DATA.summary;
+  const nw  = s.total; // always incl. real estate for % denominator
+  const pct = v => nw ? (v / nw * 100).toFixed(1) + '% of NW' : '—';
+
+  document.getElementById('kpiLiquid').textContent      = fmtINR(s.liquid);
+  document.getElementById('kpiLiquidPct').textContent   = pct(s.liquid);
+
+  document.getElementById('kpiStocksMF').textContent    = fmtINR(s.stocksMF);
+  document.getElementById('kpiStocksMFPct').textContent = pct(s.stocksMF);
+
+  document.getElementById('kpiRealEstate').textContent    = fmtINR(s.realEstate);
+  document.getElementById('kpiRealEstatePct').textContent = pct(s.realEstate);
+
+  document.getElementById('kpiGold').textContent    = fmtINR(s.gold);
+  document.getElementById('kpiGoldPct').textContent = pct(s.gold);
 }
 
 // ── Trend chart ──────────────────────────────────────────────
@@ -503,13 +609,20 @@ renderBreakdown('expenseList', DATA.expense, '€');
 {
   const colors = {
     'Euro bank accounts': '#f97316', 'INR savings accounts': '#22c55e', 'Stocks & IPO': '#15803d',
-    'Gold': '#eab308', 'Real estate': '#64748b', 'Debt (credit cards)': '#ef4444', 'Other': '#94a3b8'
+    'Gold': '#eab308', 'Real estate': '#64748b', 'Debt (credit cards)': '#ef4444',
+    'Disputed (under recovery)': '#94a3b8', 'Other': '#94a3b8'
   };
-  const entries = Object.entries(DATA.accounts);
+  // Sort groups by absolute total value, high to low
+  const entries = Object.entries(DATA.accounts).sort((a, b) => {
+    const ta = Math.abs(a[1].reduce((s, x) => s + x.inr, 0));
+    const tb = Math.abs(b[1].reduce((s, x) => s + x.inr, 0));
+    return tb - ta;
+  });
   const totalAccts = entries.reduce((s, [_,v]) => s + v.length, 0);
   document.getElementById('accountsMeta').textContent = `${totalAccts} accounts · tap to expand`;
   document.getElementById('accountsList').innerHTML = entries.map(([cat, accs], idx) => {
     const t = accs.reduce((s,a) => s + a.inr, 0);
+    const isDisputed = cat === 'Disputed (under recovery)';
     const rows = accs.map(a => `
       <div class="acct-row">
         <div>
@@ -519,15 +632,16 @@ renderBreakdown('expenseList', DATA.expense, '€');
         <div class="num text-sm" style="font-weight: 700; color: ${a.inr < 0 ? 'var(--red-deep)' : 'var(--text)'};">${fmtINR(a.inr)}</div>
       </div>`).join('');
     return `
-      <details ${idx === 0 ? 'open' : ''} class="card-inner">
+      <details ${idx === 0 ? 'open' : ''} class="card-inner" ${isDisputed ? 'style="border: 1px dashed var(--border-strong);"' : ''}>
         <summary class="px-5 py-4 flex items-center justify-between">
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-3 flex-wrap">
             <svg class="chev w-3 h-3" viewBox="0 0 12 12" style="color: var(--text-muted);"><path d="M4 2 L8 6 L4 10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
             <span class="dot" style="background: ${colors[cat] || '#94a3b8'};"></span>
             <span class="text-sm" style="font-weight: 700;">${cat}</span>
             <span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">${accs.length}</span>
+            ${isDisputed ? '<span class="pill pill-slate" style="font-size:10px; padding: 2px 8px;">Disputed · excluded from net worth</span>' : ''}
           </div>
-          <span class="num text-sm" style="font-weight: 700; color: ${t < 0 ? 'var(--red-deep)' : 'var(--text)'};">${fmtINR(t)}</span>
+          <span class="num text-sm" style="font-weight: 700; color: ${t < 0 ? 'var(--red-deep)' : isDisputed ? 'var(--slate)' : 'var(--text)'};">${fmtINR(t)}</span>
         </summary>
         <div>${rows}</div>
       </details>`;
@@ -557,6 +671,112 @@ renderBreakdown('expenseList', DATA.expense, '€');
         <div class="num text-sm text-right shrink-0" style="font-weight: 700; color: ${amtColor[t.type] || 'var(--text)'};">${sign}${fmtCcy(t.amt, t.ccy)}</div>
       </div>`;
   }).join('');
+// ── Stocks & MF deep dive ─────────────────────────────────────
+{
+  const sd = DATA.stocksDetail;
+  if (sd) {
+    const plColor  = v => v >= 0 ? 'var(--green-deep)' : 'var(--red-deep)';
+    const plSign   = v => v >= 0 ? '+' : '−';
+    const fmtPct   = v => (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%';
+    const fmtPctRaw= v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+
+    // L1 total
+    const totalVal = sd.zerodhaTotalVal + sd.othersTotalVal;
+    const totalPL  = sd.familyTotal.pl; // Zerodha P&L only (Others P&L not separately available at L1)
+    document.getElementById('smfTotal').textContent   = fmtINR(totalVal);
+    document.getElementById('smfPL').innerHTML =
+      `<span style="color:${plColor(totalPL)};">${plSign(totalPL)}${fmtINR(Math.abs(totalPL))} Zerodha P&L (${fmtPctRaw(sd.familyTotal.plPct)})</span>`;
+
+    // L2 Zerodha
+    const zPL = sd.familyTotal.pl;
+    document.getElementById('smfZerodhVal').textContent = fmtINR(sd.zerodhaTotalVal);
+    document.getElementById('smfZerodhaPL').innerHTML =
+      `<span style="color:${plColor(zPL)};">${plSign(zPL)}${fmtINR(Math.abs(zPL))} · ${fmtPctRaw(sd.familyTotal.plPct)}</span>`;
+
+    // L2 Others
+    const othInvested = sd.ipoOthers.reduce((s,x) => s + x.invested, 0);
+    const othPL       = sd.ipoOthers.reduce((s,x) => s + x.pl, 0);
+    document.getElementById('smfOthersVal').textContent = fmtINR(sd.othersTotalVal);
+    document.getElementById('smfOthersPL').innerHTML =
+      `<span style="color:${plColor(othPL)};">${plSign(othPL)}${fmtINR(Math.abs(othPL))} unrealized</span>`;
+
+    // L3 Zerodha — per-account table
+    const maxVal = Math.max(...sd.accounts.map(a => a.value), 1);
+    document.getElementById('smfAcctTable').innerHTML = [
+      ...sd.accounts.map(a => `
+        <div style="border-top: 1px solid var(--border); padding: 10px 0;">
+          <div class="flex justify-between items-baseline mb-1">
+            <span class="text-[12px]" style="font-weight: 700;">${a.name}</span>
+            <span class="num text-[12px]" style="font-weight: 700; color:${plColor(a.pl)};">${plSign(a.pl)}${fmtINR(Math.abs(a.pl))} (${fmtPctRaw(a.plPct)})</span>
+          </div>
+          <div class="flex justify-between text-[11px] mb-1.5" style="color: var(--text-muted);">
+            <span>Invested ${fmtINR(a.invested)}</span>
+            <span>Now ${fmtINR(a.value)}</span>
+          </div>
+          <div class="hbar"><span style="width:${(a.value/maxVal*100).toFixed(1)}%; background:#15803d;"></span></div>
+        </div>`),
+      `<div style="border-top: 2px solid var(--border-strong); padding: 10px 0 0;" class="flex justify-between">
+        <span class="text-[12px]" style="font-weight: 800;">Family Total</span>
+        <span class="num text-[12px]" style="font-weight: 800; color:${plColor(sd.familyTotal.pl)};">${plSign(sd.familyTotal.pl)}${fmtINR(Math.abs(sd.familyTotal.pl))} (${fmtPctRaw(sd.familyTotal.plPct)})</span>
+      </div>`
+    ].join('');
+
+    // L3 Zerodha — asset class bars
+    const assetColors = ['#8b5cf6','#15803d','#06b6d4','#f97316'];
+    const maxAsset = Math.max(...sd.assetClass.map(a => a.value), 1);
+    document.getElementById('smfAssetClass').innerHTML = sd.assetClass.map((a, i) => `
+      <div>
+        <div class="flex justify-between text-[11px] mb-1">
+          <span style="font-weight:600;">${a.label}</span>
+          <span class="num" style="font-weight:700;">${a.pct.toFixed(2)}%</span>
+        </div>
+        <div class="hbar"><span style="width:${(a.value/maxAsset*100).toFixed(1)}%; background:${assetColors[i%assetColors.length]};"></span></div>
+      </div>`).join('');
+
+    // L3 Zerodha — cap split bars
+    const capColors = { 'Large Cap':'#15803d', 'Mid Cap':'#eab308', 'Small Cap':'#f97316' };
+    const maxCap = Math.max(...sd.capSplit.map(c => c.value), 1);
+    document.getElementById('smfCapSplit').innerHTML = sd.capSplit.map(c => `
+      <div>
+        <div class="flex justify-between text-[11px] mb-1">
+          <span style="font-weight:600;">${c.label}</span>
+          <span class="num" style="font-weight:700;">${c.pct.toFixed(2)}%</span>
+        </div>
+        <div class="hbar"><span style="width:${(c.value/maxCap*100).toFixed(1)}%; background:${capColors[c.label]||'#64748b'};"></span></div>
+      </div>`).join('');
+
+    // L3 Zerodha — sector bars (sorted high to low, already sorted in Code.gs)
+    const maxSec = sd.sectors.length ? sd.sectors[0].value : 1;
+    const secPalette = ['#15803d','#22c55e','#06b6d4','#8b5cf6','#f97316','#eab308','#ef4444','#64748b','#84cc16','#0ea5e9'];
+    document.getElementById('smfSectors').innerHTML = sd.sectors.map((s, i) => `
+      <div>
+        <div class="flex justify-between text-[11px] mb-1">
+          <span style="font-weight:600;">${s.label}</span>
+          <div class="flex gap-3">
+            <span class="num" style="font-weight:600; color:var(--text-muted);">${fmtINR(s.value)}</span>
+            <span class="num" style="font-weight:700; min-width:38px; text-align:right;">${s.pct.toFixed(2)}%</span>
+          </div>
+        </div>
+        <div class="hbar"><span style="width:${(s.value/maxSec*100).toFixed(1)}%; background:${secPalette[i%secPalette.length]};"></span></div>
+      </div>`).join('');
+
+    // L3 Others — IPO list sorted by current value high to low
+    const ipos = [...sd.ipoOthers].sort((a, b) => b.value - a.value);
+    const maxIpo = ipos.length ? ipos[0].value : 1;
+    document.getElementById('smfIpoList').innerHTML = ipos.length ? ipos.map(ip => `
+      <div style="border-top: 1px solid var(--border); padding: 10px 0;">
+        <div class="flex justify-between items-baseline mb-0.5">
+          <span class="text-[12px]" style="font-weight:700;">${ip.stock}</span>
+          <span class="num text-[12px]" style="font-weight:700; color:${plColor(ip.pl)};">${plSign(ip.pl)}${fmtINR(Math.abs(ip.pl))}</span>
+        </div>
+        <div class="flex justify-between text-[11px] mb-1.5" style="color:var(--text-muted);">
+          <span>${ip.account}</span>
+          <span>Now ${fmtINR(ip.value)}</span>
+        </div>
+        <div class="hbar"><span style="width:${(ip.value/maxIpo*100).toFixed(1)}%; background:#84cc16;"></span></div>
+      </div>`).join('')
+    : '<div class="text-sm" style="color:var(--text-muted);">No non-Zerodha holdings found.</div>';
+  }
 }
 </script>
 </body>

@@ -16,9 +16,10 @@
  */
 
 const SHEETS = {
-  ACCOUNTS: 'Account',
-  HISTORY:  'Account Monthly History',
-  TXNS:     'Transactions'
+  ACCOUNTS:  'Account',
+  HISTORY:   'Account Monthly History',
+  TXNS:      'Transactions',
+  STOCKS_MF: 'Stocks + MF Summary'
 };
 
 const EUR_CCYS = ['EUR', 'Eur', 'Euro', 'EURO'];
@@ -54,10 +55,7 @@ function doGet() {
 // MAIN DATA BUILDER
 // ============================================================
 function buildDashboardData() {
-  // Force fresh data on every load — bypasses Apps Script's server-side cache
-  SpreadsheetApp.flush();
   const ss       = SpreadsheetApp.getActiveSpreadsheet();
-  ss.getActiveSheet(); // nudge the spreadsheet service to reload
   const accounts = readSheet(ss, SHEETS.ACCOUNTS);
   const history  = readSheet(ss, SHEETS.HISTORY);
   const txns     = readSheet(ss, SHEETS.TXNS);
@@ -77,7 +75,8 @@ function buildDashboardData() {
     income:        incomeBreakdown(txns),
     expense:       expenseBreakdown(txns),
     accounts:      accountGroups(accounts),
-    recentTxns:    recentTxns(txns, 20)
+    recentTxns:    recentTxns(txns, 20),
+    stocksDetail:  readStocksDetail(ss)
   };
 }
 
@@ -118,17 +117,13 @@ function isRealEstate(row) {
   return String(row.Category || '').trim() === 'RealEstate';
 }
 
-// Normalise Category column — blank stays blank (blank = excluded from all calculations)
+// Forward-fill Category column
 function fillCategory(rows) {
+  let last = '';
   rows.forEach(r => {
-    r.Category = (r.Category && String(r.Category).trim()) ? String(r.Category).trim() : '';
+    if (r.Category && String(r.Category).trim()) last = String(r.Category).trim();
+    else r.Category = last;
   });
-}
-
-// Returns true only if column B (Category) is filled AND column F (Include in Net Worth) is TRUE
-function isIncluded(row) {
-  if (!row.Category) return false;
-  return includeInNetWorth(row);
 }
 
 function latestEurRate(accounts) {
@@ -145,57 +140,57 @@ function latestEurRate(accounts) {
 function summary(accounts) {
   let base = 0;        // net worth excluding real estate
   let realEstate = 0;  // real estate total (sent separately for the toggle)
-  let liquid = 0, invested = 0, gold = 0, debt = 0, disputed = 0;
+  let liquid = 0, stocksMF = 0, gold = 0, disputed = 0;
 
   accounts.forEach(a => {
-    const v = num(a['INR Gross Balance']);
-    const included = isIncluded(a);
+    const v    = num(a['INR Gross Balance']);
+    const cat  = String(a.Category || '').trim();
+    const incl = includeInNetWorth(a);   // col F must be TRUE
+    const hasCategory = cat !== '';      // col B must have a value
 
-    // Skip rows with blank Category entirely
-    if (!a.Category) return;
+    // Skip rows where col B is blank — no category means not counted
+    if (!hasCategory) return;
 
-    // Falcon is special — always shown in disputed box but NEVER in net worth total
-    if (a.Category === 'Falcon') {
-      disputed += v;
+    // Real estate: accumulate separately for the UI toggle.
+    // Only count if col F is TRUE (same as net worth logic).
+    if (cat === 'RealEstate') {
+      if (incl) realEstate += v;
       return;
     }
 
-    // Accumulate real estate separately (UI toggle overrides it live)
-    if (isRealEstate(a)) {
-      if (includeInNetWorth(a)) realEstate += v;
-    } else if (included) {
-      base += v;
-    }
+    // Skip rows excluded from net worth (col F = FALSE) for all KPIs
+    if (!incl) return;
 
-    // KPI breakdown tiles — both column B filled AND column F TRUE required
-    if (!included) return;
-    switch (a.Category) {
+    // Net worth base (everything except real estate, where col F = TRUE)
+    base += v;
+
+    // KPI buckets — col F already checked above
+    switch (cat) {
       case 'Euro':
       case 'Savings A/C':
+      case 'IPO Fund':          // IPO Fund is liquid, not invested
         liquid += v; break;
       case 'Stocks':
-      case 'IPO Fund':
-      case 'Investment':
-        invested += v; break;
+      case 'Investment':        // Stocks & MF bucket
+        stocksMF += v; break;
       case 'Stocks covered in 15':
-        break; // skip — already in ID 15 total
+        break;                  // skip — already counted in the linked row
       case 'Gold':
         gold += v; break;
-      case 'Debt':
-        debt += v; break;
+      case 'Falcon':
+        disputed += v; break;  // tracked for drill-down tag, not hero
     }
   });
 
-  // total = base + realEstate (both included by default since sheet has TRUE)
+  // total = base + realEstate
   // The UI toggle will subtract realEstate client-side when switched off
   return {
     total:      Math.round(base + realEstate),
-    base:       Math.round(base),       // net worth without real estate
-    realEstate: Math.round(realEstate), // real estate portion, for the toggle
+    base:       Math.round(base),        // net worth without real estate
+    realEstate: Math.round(realEstate),  // real estate portion, for the toggle
     liquid:     Math.round(liquid),
-    invested:   Math.round(invested),
+    stocksMF:   Math.round(stocksMF),
     gold:       Math.round(gold),
-    debt:       Math.round(debt),
     disputed:   Math.round(disputed)
   };
 }
@@ -244,8 +239,6 @@ function allocation(accounts) {
   };
   const sums = {};
   accounts.forEach(a => {
-    if (!a.Category) return;                          // blank column B — skip
-    if (!isIncluded(a) && !isRealEstate(a)) return;  // column F FALSE — skip (keep RealEstate for donut)
     if (a.Category === 'Stocks covered in 15') return;
     const label = labelMap[a.Category] || a.Category || 'Other';
     sums[label] = (sums[label] || 0) + num(a['INR Gross Balance']);
@@ -263,7 +256,6 @@ function allocation(accounts) {
 function currencySplit(accounts) {
   let inr = 0, eur = 0;
   accounts.forEach(a => {
-    if (!isIncluded(a) && !isRealEstate(a)) return; // blank B or FALSE F — skip
     const v = num(a['INR Gross Balance']);
     if (isEur(a.Currency)) eur += v;
     else inr += v;
@@ -277,7 +269,6 @@ function currencySplit(accounts) {
 function perHolder(accounts) {
   let hiral = 0, divyang = 0, family = 0, debt = 0;
   accounts.forEach(a => {
-    if (!isIncluded(a) && !isRealEstate(a)) return; // blank B or FALSE F — skip
     const v = num(a['INR Gross Balance']);
     const name = String(a.Account || '').toLowerCase();
     if (a.Category === 'Debt') debt += v;
@@ -370,8 +361,6 @@ function accountGroups(accounts) {
   const groups = {};
   accounts.forEach(a => {
     if (!a.Account) return;
-    if (!a.Category) return;                          // blank column B — skip
-    if (!isIncluded(a) && !isRealEstate(a)) return;  // column F FALSE — skip
     if (a.Category === 'Stocks covered in 15') return;
     const v = num(a['INR Gross Balance']);
     if (v === 0) return;
@@ -409,4 +398,103 @@ function recentTxns(txns, limit) {
       ccy:  isEur(t.Currency) ? 'EUR' : 'INR',
       note: String(t.Note || t['Txn_Category'] || '')
     }));
+}
+
+// ============================================================
+// STOCKS + MF DETAIL  (reads Stocks + MF Summary sheet)
+//
+// Fixed row map (1-indexed, as in the sheet):
+//   Section A  : D7  = Zerodha total, D8 = Others total
+//   Accounts   : header row 19, data rows 20-24, total row 25  cols B-F
+//   Asset Class: header row 28, data rows 29-32               cols B-D
+//   Cap Split  : header row 28, data rows 29-31               cols E-G
+//   Sectors    : header row 35, data rows 36-44 (9 rows)      cols B-D + E-G (merged)
+//   IPO list   : header row 64, data rows 65-104              cols B-G
+// ============================================================
+function readStocksDetail(ss) {
+  const sh = ss.getSheetByName(SHEETS.STOCKS_MF);
+  if (!sh) { Logger.log('Sheet missing: ' + SHEETS.STOCKS_MF); return null; }
+
+  // Helper: get value at 1-indexed row, col (A=1)
+  const cell = (r, c) => sh.getRange(r, c).getValue();
+  // Helper: get row array for 1-indexed row, starting col, count
+  const row  = (r, startC, count) => sh.getRange(r, startC, 1, count).getValues()[0];
+  // Helper: get block for 1-indexed row, col, numRows, numCols
+  const block = (r, c, rows, cols) => sh.getRange(r, c, rows, cols).getValues();
+
+  // ── L2 totals from Section A ─────────────────────────────
+  const zerodhaTotalVal  = num(cell(7, 4));  // D7
+  const othersTotalVal   = num(cell(8, 4));  // D8
+
+  // ── Account breakdown rows 20-24, total row 25, cols B-F ─
+  const acctRows  = block(20, 2, 5, 5); // 5 accounts
+  const totalRow  = row(25, 2, 5);      // family total
+  const accounts_ = acctRows
+    .filter(r => r[0] !== '' && r[0] !== null)
+    .map(r => ({
+      name:     String(r[0]),
+      invested: num(r[1]),
+      value:    num(r[2]),
+      pl:       num(r[3]),
+      plPct:    num(r[4])
+    }));
+  const familyTotal = {
+    invested: num(totalRow[1]),
+    value:    num(totalRow[2]),
+    pl:       num(totalRow[3]),
+    plPct:    num(totalRow[4])
+  };
+
+  // ── Asset Class split rows 29-32, cols B-D ───────────────
+  const assetBlock  = block(29, 2, 4, 3);
+  const assetClass  = assetBlock
+    .filter(r => r[0] !== '' && r[0] !== null)
+    .map(r => ({ label: String(r[0]), value: num(r[1]), pct: num(r[2]) }));
+
+  // ── Cap split rows 29-31, cols E-G ───────────────────────
+  const capBlock = block(29, 5, 3, 3);
+  const capSplit = capBlock
+    .filter(r => r[0] !== '' && r[0] !== null)
+    .map(r => ({ label: String(r[0]), value: num(r[1]), pct: num(r[2]) }));
+
+  // ── Sectors rows 36-44, left cols B-D + right cols E-G ───
+  const secLeft  = block(36, 2, 9, 3);
+  const secRight = block(36, 5, 9, 3);
+  const sectors  = [];
+  for (let i = 0; i < 9; i++) {
+    if (secLeft[i][0]  !== '' && secLeft[i][0]  !== null)
+      sectors.push({ label: String(secLeft[i][0]),  value: num(secLeft[i][1]),  pct: num(secLeft[i][2])  });
+    if (secRight[i][0] !== '' && secRight[i][0] !== null)
+      sectors.push({ label: String(secRight[i][0]), value: num(secRight[i][1]), pct: num(secRight[i][2]) });
+  }
+  sectors.sort((a, b) => b.value - a.value);
+
+  // ── IPO list rows 65-104, cols B-G, filter Zerodha=FALSE ─
+  const ipoBlock  = block(65, 2, 40, 6);
+  const ipoOthers = ipoBlock
+    .filter(r => r[0] !== '' && r[0] !== null)
+    .filter(r => {
+      // col G (index 5 in our slice) = Zerodha?; keep FALSE rows
+      const z = r[5];
+      if (typeof z === 'boolean') return !z;
+      return String(z).trim().toUpperCase() !== 'TRUE';
+    })
+    .map(r => ({
+      account:  String(r[0]),
+      stock:    String(r[1]),
+      invested: num(r[2]),
+      value:    num(r[3]),
+      pl:       num(r[4])
+    }));
+
+  return {
+    zerodhaTotalVal,
+    othersTotalVal,
+    accounts: accounts_,
+    familyTotal,
+    assetClass,
+    capSplit,
+    sectors,
+    ipoOthers
+  };
 }
