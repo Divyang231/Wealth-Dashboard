@@ -401,7 +401,35 @@ function recentTxns(txns, limit) {
 }
 
 // ============================================================
-// STOCKS + MF DETAIL  (reads Stocks + MF Summary sheet)
+// AI ADVISOR — server-side Claude API call via UrlFetchApp
+// Called from Index.html via google.script.run
+// ============================================================
+function callClaudeAdvisor(prompt) {
+  try {
+    const payload = {
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: prompt }]
+    };
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        'x-api-key':         PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY'),
+        'anthropic-version': '2023-06-01'
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+    const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', options);
+    const data     = JSON.parse(response.getContentText());
+    if (data.error) return JSON.stringify({ error: data.error.message });
+    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    return text;
+  } catch(e) {
+    return JSON.stringify({ error: e.toString() });
+  }
+}
 //
 // Fixed row map (1-indexed, as in the sheet):
 //   Section A  : D7  = Zerodha total, D8 = Others total

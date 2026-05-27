@@ -829,7 +829,7 @@ renderBreakdown('expenseList', DATA.expense, '€');
 }
 
 // ── AI Financial Advisor ──────────────────────────────────────
-async function runAIAnalysis() {
+function runAIAnalysis() {
   const btn      = document.getElementById('aiAnalyzeBtn');
   const btnText  = document.getElementById('aiBtnText');
   const status   = document.getElementById('aiStatus');
@@ -894,34 +894,40 @@ Also overall score 0-100 and one-line verdict.
 Return ONLY valid JSON, no markdown: {"score":72,"verdict":"...","cards":[...]}`;
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages: [{ role: 'user', content: prompt }]
+    google.script.run
+      .withSuccessHandler(function(text) {
+        try {
+          // Check for error returned from server
+          const maybeErr = JSON.parse(text);
+          if (maybeErr.error) throw new Error(maybeErr.error);
+        } catch(parseErr) {
+          // Not an error object — continue to extract JSON
+        }
+        try {
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) throw new Error('No structured response received. Try again.');
+          const analysis = JSON.parse(jsonMatch[0]);
+          renderAIResults(analysis);
+        } catch(e) {
+          errorEl.style.display = 'block';
+          errorEl.textContent = '❌ ' + e.message;
+        }
+        btn.disabled = false;
+        btnText.textContent = '↻ Re-analyse';
+        status.style.display = 'none';
       })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error?.message || 'API error ' + response.status);
-    }
-
-    const result = await response.json();
-    const fullText = (result.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-    const jsonMatch = fullText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No structured response received. Try again.');
-    const analysis = JSON.parse(jsonMatch[0]);
-    renderAIResults(analysis);
+      .withFailureHandler(function(e) {
+        errorEl.style.display = 'block';
+        errorEl.textContent = '❌ ' + e.message;
+        btn.disabled = false;
+        btnText.textContent = '↻ Re-analyse';
+        status.style.display = 'none';
+      })
+      .callClaudeAdvisor(prompt);
 
   } catch(e) {
     errorEl.style.display = 'block';
     errorEl.textContent = '❌ ' + e.message;
-    console.error(e);
-  } finally {
     btn.disabled = false;
     btnText.textContent = '↻ Re-analyse';
     status.style.display = 'none';
