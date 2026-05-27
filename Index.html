@@ -842,72 +842,31 @@ function runAIAnalysis() {
   results.style.display = 'none';
   errorEl.style.display = 'none';
 
-  const s  = DATA.summary || {};
-  const sd = DATA.stocksDetail || {};
-  const cf = DATA.cashflow || [];
-  const nw = s.total || 1;
-  const avgInc = cf.length ? cf.reduce((a,d) => a + d.inc, 0) / cf.length : 0;
-  const avgExp = cf.length ? cf.reduce((a,d) => a + d.exp, 0) / cf.length : 0;
-  const savingsRate = avgInc ? ((avgInc - avgExp) / avgInc * 100).toFixed(1) : 0;
-  const ft = sd.familyTotal || {};
-  const topSectors = (sd.sectors || []).slice(0,3).map(s => s.label + ' (' + s.pct.toFixed(1) + '%)').join(', ');
-  const top2Pct = (sd.sectors || []).slice(0,2).reduce((a,s) => a + s.pct, 0).toFixed(1);
-  const smallCap = (sd.capSplit || []).find(c => c.label === 'Small Cap');
-  const largeCap = (sd.capSplit || []).find(c => c.label === 'Large Cap');
-  const worstAcct = [...(sd.accounts || [])].sort((a,b) => a.plPct - b.plPct)[0];
-  const bestAcct  = [...(sd.accounts || [])].sort((a,b) => b.plPct - a.plPct)[0];
-  const ccy = DATA.currencySplit || {};
-
-  const prompt = `You are a sharp, direct financial advisor analysing an Indian family's complete wealth snapshot. Be blunt where needed — no unnecessary softening. Give specific corrective actions with numbers and timelines.
-
-FINANCIAL SNAPSHOT:
-- Net Worth: ${fmtINR(nw)} (including Real Estate)
-- Liquid (savings + EUR cash + IPO fund): ${fmtINR(s.liquid)} = ${(s.liquid/nw*100).toFixed(1)}% of NW
-- Stocks & MF: ${fmtINR(s.stocksMF)} = ${(s.stocksMF/nw*100).toFixed(1)}% of NW
-- Real Estate: ${fmtINR(s.realEstate)} = ${(s.realEstate/nw*100).toFixed(1)}% of NW
-- Gold: ${fmtINR(s.gold)} = ${(s.gold/nw*100).toFixed(1)}% of NW
-- Disputed/Falcon (excluded from NW): ${fmtINR(s.disputed || 0)}
-
-ZERODHA EQUITY PORTFOLIO:
-- Invested: ${fmtINR(ft.invested || 0)} | Present Value: ${fmtINR(ft.value || 0)}
-- Unrealized P&L: ${fmtINR(ft.pl || 0)} (${(ft.plPct || 0).toFixed(2)}%)
-- Best account: ${bestAcct ? bestAcct.name + ' +' + bestAcct.plPct.toFixed(2) + '%' : 'N/A'}
-- Worst account: ${worstAcct ? worstAcct.name + ' ' + worstAcct.plPct.toFixed(2) + '%' : 'N/A'}
-- Asset class mix: ${(sd.assetClass||[]).map(a => a.label+' '+a.pct.toFixed(1)+'%').join(' | ')}
-- Cap split: Large ${largeCap ? largeCap.pct.toFixed(1) : 0}% | Small ${smallCap ? smallCap.pct.toFixed(1) : 0}%
-- Top sectors: ${topSectors} | Top 2 concentration: ${top2Pct}%
-
-CASH FLOW (EUR, last 12 months avg/month):
-- Income: €${Math.round(avgInc).toLocaleString('de-DE')} | Expense: €${Math.round(avgExp).toLocaleString('de-DE')}
-- Savings rate: ${savingsRate}%
-
-CURRENCY: ${(ccy.inr/nw*100).toFixed(1)}% INR / ${(ccy.eur/nw*100).toFixed(1)}% EUR | Rate: ₹${DATA.eurRate || 112}/EUR
-
-Context: Indian family partly based in Europe, earning in EUR, 5 Zerodha demat accounts across family members, age 35-50.
-
-Use web search to find current: Nifty 50 YTD 2026, best Indian FD rates (1-3yr), India CPI inflation, recommended equity allocation for Indian HNI families age 35-50.
-
-Generate 6-8 insight cards as JSON. Each:
-{"category":"LIQUIDITY|ALLOCATION|PORTFOLIO|SECTORS|CASH FLOW|CURRENCY|GOLD|RISK","title":"punchy title","severity":"critical|warning|advisory|healthy","observation":"blunt 1-2 sentences with their actual numbers","impact":"what this means with market context","action":"specific action with amounts and timeline"}
-
-Also overall score 0-100 and one-line verdict.
-Return ONLY valid JSON, no markdown: {"score":72,"verdict":"...","cards":[...]}`;
-
   try {
     google.script.run
       .withSuccessHandler(function(text) {
         try {
-          // Check for error returned from server
           const maybeErr = JSON.parse(text);
           if (maybeErr.error) throw new Error(maybeErr.error);
-        } catch(parseErr) {
-          // Not an error object — continue to extract JSON
-        }
+        } catch(parseErr) {}
         try {
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          if (!jsonMatch) throw new Error('No structured response received. Try again.');
-          const analysis = JSON.parse(jsonMatch[0]);
-          renderAIResults(analysis);
+          let best = null;
+          let depth = 0, start = -1;
+          for (let i = 0; i < text.length; i++) {
+            if (text[i] === '{') { if (depth === 0) start = i; depth++; }
+            else if (text[i] === '}') {
+              depth--;
+              if (depth === 0 && start !== -1) {
+                const candidate = text.slice(start, i + 1);
+                try {
+                  const parsed = JSON.parse(candidate);
+                  if (parsed.score !== undefined && parsed.cards) { best = parsed; break; }
+                } catch(e) {}
+              }
+            }
+          }
+          if (!best) throw new Error('Could not parse analysis response. Try again.');
+          renderAIResults(best);
         } catch(e) {
           errorEl.style.display = 'block';
           errorEl.textContent = '❌ ' + e.message;
@@ -923,7 +882,7 @@ Return ONLY valid JSON, no markdown: {"score":72,"verdict":"...","cards":[...]}`
         btnText.textContent = '↻ Re-analyse';
         status.style.display = 'none';
       })
-      .callClaudeAdvisor(prompt);
+      .runGeminiAdvisor();
 
   } catch(e) {
     errorEl.style.display = 'block';
