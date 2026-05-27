@@ -412,89 +412,74 @@ function recentTxns(txns, limit) {
 //   IPO list   : header row 64, data rows 65-104              cols B-G
 // ============================================================
 function readStocksDetail(ss) {
-  const sh = ss.getSheetByName(SHEETS.STOCKS_MF);
-  if (!sh) { Logger.log('Sheet missing: ' + SHEETS.STOCKS_MF); return null; }
+  try {
+    const sh = ss.getSheetByName(SHEETS.STOCKS_MF);
+    if (!sh) { Logger.log('Sheet missing: ' + SHEETS.STOCKS_MF); return null; }
 
-  // Helper: get value at 1-indexed row, col (A=1)
-  const cell = (r, c) => sh.getRange(r, c).getValue();
-  // Helper: get row array for 1-indexed row, starting col, count
-  const row  = (r, startC, count) => sh.getRange(r, startC, 1, count).getValues()[0];
-  // Helper: get block for 1-indexed row, col, numRows, numCols
-  const block = (r, c, rows, cols) => sh.getRange(r, c, rows, cols).getValues();
+    // Helper: get single cell value, 1-indexed row/col (A=1)
+    const cellVal = function(r, c) { return sh.getRange(r, c).getValue(); };
+    // Helper: get a single row as array, 1-indexed
+    const rowVals = function(r, startC, cnt) { return sh.getRange(r, startC, 1, cnt).getValues()[0]; };
+    // Helper: get a 2-D block, 1-indexed
+    const blk = function(r, c, nr, nc) { return sh.getRange(r, c, nr, nc).getValues(); };
 
-  // ── L2 totals from Section A ─────────────────────────────
-  const zerodhaTotalVal  = num(cell(7, 4));  // D7
-  const othersTotalVal   = num(cell(8, 4));  // D8
+    // ── L2 totals from Section A ─────────────────────────────
+    const zerodhaTotalVal = num(cellVal(7, 4));  // D7
+    const othersTotalVal  = num(cellVal(8, 4));  // D8
 
-  // ── Account breakdown rows 20-24, total row 25, cols B-F ─
-  const acctRows  = block(20, 2, 5, 5); // 5 accounts
-  const totalRow  = row(25, 2, 5);      // family total
-  const accounts_ = acctRows
-    .filter(r => r[0] !== '' && r[0] !== null)
-    .map(r => ({
-      name:     String(r[0]),
-      invested: num(r[1]),
-      value:    num(r[2]),
-      pl:       num(r[3]),
-      plPct:    num(r[4])
-    }));
-  const familyTotal = {
-    invested: num(totalRow[1]),
-    value:    num(totalRow[2]),
-    pl:       num(totalRow[3]),
-    plPct:    num(totalRow[4])
-  };
+    // ── Account breakdown rows 20-24, total row 25, cols B-F ─
+    const acctData   = blk(20, 2, 5, 5);
+    const totalData  = rowVals(25, 2, 5);
+    const accounts_  = acctData
+      .filter(function(r) { return r[0] !== '' && r[0] !== null; })
+      .map(function(r) {
+        return { name: String(r[0]), invested: num(r[1]), value: num(r[2]), pl: num(r[3]), plPct: num(r[4]) };
+      });
+    const familyTotal = {
+      invested: num(totalData[1]),
+      value:    num(totalData[2]),
+      pl:       num(totalData[3]),
+      plPct:    num(totalData[4])
+    };
 
-  // ── Asset Class split rows 29-32, cols B-D ───────────────
-  const assetBlock  = block(29, 2, 4, 3);
-  const assetClass  = assetBlock
-    .filter(r => r[0] !== '' && r[0] !== null)
-    .map(r => ({ label: String(r[0]), value: num(r[1]), pct: num(r[2]) }));
+    // ── Asset Class split rows 29-32, cols B-D ───────────────
+    const assetClass = blk(29, 2, 4, 3)
+      .filter(function(r) { return r[0] !== '' && r[0] !== null; })
+      .map(function(r) { return { label: String(r[0]), value: num(r[1]), pct: num(r[2]) }; });
 
-  // ── Cap split rows 29-31, cols E-G ───────────────────────
-  const capBlock = block(29, 5, 3, 3);
-  const capSplit = capBlock
-    .filter(r => r[0] !== '' && r[0] !== null)
-    .map(r => ({ label: String(r[0]), value: num(r[1]), pct: num(r[2]) }));
+    // ── Cap split rows 29-31, cols E-G ───────────────────────
+    const capSplit = blk(29, 5, 3, 3)
+      .filter(function(r) { return r[0] !== '' && r[0] !== null; })
+      .map(function(r) { return { label: String(r[0]), value: num(r[1]), pct: num(r[2]) }; });
 
-  // ── Sectors rows 36-44, left cols B-D + right cols E-G ───
-  const secLeft  = block(36, 2, 9, 3);
-  const secRight = block(36, 5, 9, 3);
-  const sectors  = [];
-  for (let i = 0; i < 9; i++) {
-    if (secLeft[i][0]  !== '' && secLeft[i][0]  !== null)
-      sectors.push({ label: String(secLeft[i][0]),  value: num(secLeft[i][1]),  pct: num(secLeft[i][2])  });
-    if (secRight[i][0] !== '' && secRight[i][0] !== null)
-      sectors.push({ label: String(secRight[i][0]), value: num(secRight[i][1]), pct: num(secRight[i][2]) });
+    // ── Sectors rows 36-44, left cols B-D + right cols E-G ───
+    const secLeft  = blk(36, 2, 9, 3);
+    const secRight = blk(36, 5, 9, 3);
+    const sectors  = [];
+    for (var i = 0; i < 9; i++) {
+      if (secLeft[i][0]  !== '' && secLeft[i][0]  !== null)
+        sectors.push({ label: String(secLeft[i][0]),  value: num(secLeft[i][1]),  pct: num(secLeft[i][2])  });
+      if (secRight[i][0] !== '' && secRight[i][0] !== null)
+        sectors.push({ label: String(secRight[i][0]), value: num(secRight[i][1]), pct: num(secRight[i][2]) });
+    }
+    sectors.sort(function(a, b) { return b.value - a.value; });
+
+    // ── IPO list rows 65-104, cols B-G, filter Zerodha=FALSE ─
+    const ipoOthers = blk(65, 2, 40, 6)
+      .filter(function(r) { return r[0] !== '' && r[0] !== null; })
+      .filter(function(r) {
+        var z = r[5]; // col G = Zerodha?
+        if (typeof z === 'boolean') return !z;
+        return String(z).trim().toUpperCase() !== 'TRUE';
+      })
+      .map(function(r) {
+        return { account: String(r[0]), stock: String(r[1]), invested: num(r[2]), value: num(r[3]), pl: num(r[4]) };
+      });
+
+    return { zerodhaTotalVal, othersTotalVal, accounts: accounts_, familyTotal, assetClass, capSplit, sectors, ipoOthers };
+
+  } catch(e) {
+    Logger.log('readStocksDetail error: ' + e.toString());
+    return null;  // returns null safely — UI will skip the section
   }
-  sectors.sort((a, b) => b.value - a.value);
-
-  // ── IPO list rows 65-104, cols B-G, filter Zerodha=FALSE ─
-  const ipoBlock  = block(65, 2, 40, 6);
-  const ipoOthers = ipoBlock
-    .filter(r => r[0] !== '' && r[0] !== null)
-    .filter(r => {
-      // col G (index 5 in our slice) = Zerodha?; keep FALSE rows
-      const z = r[5];
-      if (typeof z === 'boolean') return !z;
-      return String(z).trim().toUpperCase() !== 'TRUE';
-    })
-    .map(r => ({
-      account:  String(r[0]),
-      stock:    String(r[1]),
-      invested: num(r[2]),
-      value:    num(r[3]),
-      pl:       num(r[4])
-    }));
-
-  return {
-    zerodhaTotalVal,
-    othersTotalVal,
-    accounts: accounts_,
-    familyTotal,
-    assetClass,
-    capSplit,
-    sectors,
-    ipoOthers
-  };
 }
