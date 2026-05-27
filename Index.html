@@ -671,6 +671,8 @@ renderBreakdown('expenseList', DATA.expense, '€');
         <div class="num text-sm text-right shrink-0" style="font-weight: 700; color: ${amtColor[t.type] || 'var(--text)'};">${sign}${fmtCcy(t.amt, t.ccy)}</div>
       </div>`;
   }).join('');
+}
+
 // ── Stocks & MF deep dive ─────────────────────────────────────
 {
   const sd = DATA.stocksDetail;
