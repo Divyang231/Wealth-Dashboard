@@ -181,34 +181,37 @@
         <div class="hidden sm:block w-px self-stretch" style="background: var(--border);"></div>
 
         <div class="grid grid-cols-2 gap-3 sm:w-[380px]">
-          <!-- Liquid — terracotta/panna cotta: signals cash isn't optimal long-term -->
+          <!-- Row 1: Liquid + Fixed Deposit -->
           <div class="card-inner p-3.5" style="border-left: 12px solid #e8714a;">
             <div class="section-label mb-1.5">Liquid</div>
             <div id="kpiLiquid" class="num text-lg" style="font-weight: 800;"></div>
             <div id="kpiLiquidPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div>
           </div>
-          <!-- Stocks & MF -->
+          <div class="card-inner p-3.5" style="border-left: 12px solid #3b82f6;">
+            <div class="section-label mb-1.5">Fixed Deposit</div>
+            <div id="kpiFD" class="num text-lg" style="font-weight: 800;"></div>
+            <div id="kpiFDPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div>
+          </div>
+          <!-- Row 2: Stocks & MF + Gold -->
           <div class="card-inner p-3.5" style="border-left: 12px solid #15803d;">
             <div class="section-label mb-1.5">Stocks & MF</div>
             <div id="kpiStocksMF" class="num text-lg" style="font-weight: 800;"></div>
             <div id="kpiStocksMFPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div>
           </div>
-          <!-- Real Estate — pastel brown -->
-          <div class="card-inner p-3.5" style="border-left: 12px solid #c4a882;">
-            <div class="section-label mb-1.5">Real Estate</div>
-            <div id="kpiRealEstate" class="num text-lg" style="font-weight: 800;"></div>
-            <div id="kpiRealEstatePct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div>
-          </div>
-          <!-- Gold -->
           <div class="card-inner p-3.5" style="border-left: 12px solid #eab308;">
             <div class="section-label mb-1.5">Gold</div>
             <div id="kpiGold" class="num text-lg" style="font-weight: 800;"></div>
             <div id="kpiGoldPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div>
           </div>
-          <!-- AI Analyse button -->
-          <div style="grid-column: span 2; display: flex; justify-content: center; margin-top: 4px;">
+          <!-- Row 3: Real Estate + Analyse button -->
+          <div class="card-inner p-3.5" style="border-left: 12px solid #c4a882; align-self: start;">
+            <div class="section-label mb-1.5">Real Estate</div>
+            <div id="kpiRealEstate" class="num text-lg" style="font-weight: 800;"></div>
+            <div id="kpiRealEstatePct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: center; align-self: start;">
             <button id="aiAnalyzeBtn" onclick="runAIAnalysis()" class="ai-btn">
-              <span id="aiBtnText">✦ Analyse my finances</span>
+              <span id="aiBtnText">✦ Analyse</span>
             </button>
           </div>
         </div>
@@ -510,14 +513,17 @@ updateHeroNumber();
   document.getElementById('kpiLiquid').textContent      = fmtINR(s.liquid);
   document.getElementById('kpiLiquidPct').textContent   = pct(s.liquid);
 
+  document.getElementById('kpiFD').textContent          = fmtINR(s.fixedDeposit || 0);
+  document.getElementById('kpiFDPct').textContent       = pct(s.fixedDeposit || 0);
+
   document.getElementById('kpiStocksMF').textContent    = fmtINR(s.stocksMF);
   document.getElementById('kpiStocksMFPct').textContent = pct(s.stocksMF);
 
+  document.getElementById('kpiGold').textContent        = fmtINR(s.gold);
+  document.getElementById('kpiGoldPct').textContent     = pct(s.gold);
+
   document.getElementById('kpiRealEstate').textContent    = fmtINR(s.realEstate);
   document.getElementById('kpiRealEstatePct').textContent = pct(s.realEstate);
-
-  document.getElementById('kpiGold').textContent    = fmtINR(s.gold);
-  document.getElementById('kpiGoldPct').textContent = pct(s.gold);
 }
 
 // ── Trend chart ──────────────────────────────────────────────

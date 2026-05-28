@@ -140,7 +140,7 @@ function latestEurRate(accounts) {
 function summary(accounts) {
   let base = 0;        // net worth excluding real estate
   let realEstate = 0;  // real estate total (sent separately for the toggle)
-  let liquid = 0, stocksMF = 0, gold = 0, disputed = 0;
+  let liquid = 0, stocksMF = 0, gold = 0, disputed = 0, fixedDeposit = 0;
 
   accounts.forEach(a => {
     const v    = num(a['INR Gross Balance']);
@@ -175,8 +175,8 @@ function summary(accounts) {
         stocksMF += v; break;
       case 'Stocks covered in 15':
         break;                  // skip — already counted in the linked row
-      case 'Gold':
-        gold += v; break;
+      case 'Fixed Deposit':
+        fixedDeposit += v; break;
       case 'Falcon':
         disputed += v; break;  // tracked for drill-down tag, not hero
     }
@@ -191,6 +191,7 @@ function summary(accounts) {
     liquid:     Math.round(liquid),
     stocksMF:   Math.round(stocksMF),
     gold:       Math.round(gold),
+    fixedDeposit: Math.round(fixedDeposit),
     disputed:   Math.round(disputed)
   };
 }
@@ -224,7 +225,7 @@ function allocation(accounts) {
     'Savings A/C':  'INR savings',
     'Gold':         'Gold',
     'RealEstate':   'Real estate',
-    'Falcon':       'Disputed',
+    'Fixed Deposit': 'Fixed Deposit',
     'Debt':         'Debt (cards)'
   };
   const colorMap = {
@@ -234,7 +235,7 @@ function allocation(accounts) {
     'Gold':          PALETTE.gold,
     'Mutual funds':  PALETTE.purple,
     'Real estate':   PALETTE.slate,
-    'Disputed':      PALETTE.slateLight,
+    'Fixed Deposit':  '#3b82f6',
     'Debt (cards)':  PALETTE.red
   };
   const sums = {};
@@ -353,7 +354,7 @@ function accountGroups(accounts) {
     'Stocks':       'Stocks & IPO',
     'IPO Fund':     'Stocks & IPO',
     'Investment':   'Stocks & IPO',
-    'Falcon':       'Disputed (under recovery)',
+    'Fixed Deposit': 'Fixed deposits',
     'Gold':         'Gold',
     'RealEstate':   'Real estate',
     'Debt':         'Debt (credit cards)'
@@ -447,7 +448,7 @@ function runGeminiAdvisor() {
     prompt += 'Liquid (savings+cash+IPO fund): ' + inr(s.liquid) + ' = ' + pct(s.liquid) + '% of NW\n';
     prompt += 'Stocks & MF: ' + inr(s.stocksMF) + ' = ' + pct(s.stocksMF) + '% of NW\n';
     prompt += 'Real Estate: ' + inr(s.realEstate) + ' = ' + pct(s.realEstate) + '% of NW\n';
-    prompt += 'Gold: ' + inr(s.gold) + ' = ' + pct(s.gold) + '% of NW\n';
+    prompt += 'Fixed Deposit: ' + inr(s.fixedDeposit||0) + ' = ' + pct(s.fixedDeposit||0) + '% of NW\n';
     prompt += 'Disputed (excluded from NW): ' + inr(s.disputed||0) + '\n\n';
     prompt += 'ZERODHA PORTFOLIO:\n';
     prompt += 'Invested: ' + inr(ft.invested||0) + ' | Value: ' + inr(ft.value||0) + ' | P&L: ' + inr(ft.pl||0) + ' (' + ((ft.plPct||0)).toFixed(2) + '%)\n';
