@@ -177,6 +177,8 @@ function summary(accounts) {
         break;                  // skip — already counted in the linked row
       case 'Fixed Deposit':
         fixedDeposit += v; break;
+      case 'Gold':
+        gold += v; break;
       case 'Falcon':
         disputed += v; break;  // tracked for drill-down tag, not hero
     }
