@@ -193,8 +193,8 @@
             <div id="kpiFDPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div>
           </div>
           <!-- Row 2: Stocks & MF + Gold -->
-          <div class="card-inner p-3.5" style="border-left: 12px solid #15803d;">
-            <div class="section-label mb-1.5">Stocks & MF</div>
+          <div class="card-inner p-3.5" style="border-left: 12px solid #15803d; cursor: pointer;" onclick="document.getElementById('smfSection').scrollIntoView({behavior:'smooth'})">
+            <div class="section-label mb-1.5">Stocks & MF ↓</div>
             <div id="kpiStocksMF" class="num text-lg" style="font-weight: 800;"></div>
             <div id="kpiStocksMFPct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div>
           </div>
@@ -209,7 +209,7 @@
             <div id="kpiRealEstate" class="num text-lg" style="font-weight: 800;"></div>
             <div id="kpiRealEstatePct" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div>
           </div>
-          <div style="display: flex; align-items: center; justify-content: center; align-self: start;">
+          <div style="display: flex; align-items: center; justify-content: center; align-self: stretch;">
             <button id="aiAnalyzeBtn" onclick="runAIAnalysis()" class="ai-btn">
               <span id="aiBtnText">✦ Analyse</span>
             </button>
@@ -328,7 +328,7 @@
   <!-- ═══════════════════════════════════════════════════════
        STOCKS & MF DEEP DIVE  —  L1 / L2 / L3
   ════════════════════════════════════════════════════════ -->
-  <section class="reveal reveal-5 mb-5">
+  <section class="reveal reveal-5 mb-5" id="smfSection">
     <div class="card p-5 sm:p-7">
 
       <!-- L1 — total headline -->
