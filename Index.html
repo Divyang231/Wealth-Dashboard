@@ -344,29 +344,24 @@
         </div>
       </div>
 
-      <!-- L2 — Zerodha vs Others side by side -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+      <!-- L2 — Zerodha vs Others vs Euro Equity -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
 
         <!-- L2 left: Zerodha Family -->
         <div class="card-inner p-4" style="border-left: 12px solid #15803d;">
           <div class="section-label mb-1">Zerodha Family · 5 accounts</div>
           <div id="smfZerodhVal" class="num text-xl mb-0.5" style="font-weight: 800;"></div>
           <div id="smfZerodhaPL" class="num text-[11px] mb-3" style="font-weight: 600;"></div>
-          <!-- L3 Zerodha expandable -->
           <details>
             <summary class="flex items-center gap-2 cursor-pointer select-none text-[12px]" style="font-weight: 700; color: var(--text-dim); list-style: none;">
               <svg class="chev w-3 h-3 shrink-0" viewBox="0 0 12 12" style="color: var(--text-muted);"><path d="M4 2 L8 6 L4 10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
               Show details
             </summary>
             <div class="mt-4 space-y-5">
-
-              <!-- Per-account table -->
               <div>
                 <div class="section-label mb-2">Per account</div>
                 <div id="smfAcctTable"></div>
               </div>
-
-              <!-- Asset class + Cap split side by side -->
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <div class="section-label mb-2">Asset class</div>
@@ -377,23 +372,19 @@
                   <div id="smfCapSplit" class="space-y-2"></div>
                 </div>
               </div>
-
-              <!-- Sector breakdown -->
               <div>
                 <div class="section-label mb-2">Sector breakdown</div>
                 <div id="smfSectors" class="space-y-2"></div>
               </div>
-
             </div>
           </details>
         </div>
 
-        <!-- L2 right: Others / IPO -->
+        <!-- L2 middle: Others / IPO -->
         <div class="card-inner p-4" style="border-left: 12px solid #84cc16;">
           <div class="section-label mb-1">Others · IPO holdings</div>
           <div id="smfOthersVal" class="num text-xl mb-0.5" style="font-weight: 800;"></div>
           <div id="smfOthersPL" class="num text-[11px] mb-3" style="font-weight: 600;"></div>
-          <!-- L3 Others expandable -->
           <details>
             <summary class="flex items-center gap-2 cursor-pointer select-none text-[12px]" style="font-weight: 700; color: var(--text-dim); list-style: none;">
               <svg class="chev w-3 h-3 shrink-0" viewBox="0 0 12 12" style="color: var(--text-muted);"><path d="M4 2 L8 6 L4 10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
@@ -402,6 +393,23 @@
             <div class="mt-4">
               <div class="section-label mb-2">Non-Zerodha unsold IPOs</div>
               <div id="smfIpoList"></div>
+            </div>
+          </details>
+        </div>
+
+        <!-- L2 right: Euro Equity -->
+        <div class="card-inner p-4" style="border-left: 12px solid #f97316;">
+          <div class="section-label mb-1">Euro Equity</div>
+          <div id="smfEuroVal" class="num text-xl mb-0.5" style="font-weight: 800;"></div>
+          <div class="num text-[11px] mb-3" style="font-weight: 600; color: var(--text-muted);">European investments</div>
+          <details>
+            <summary class="flex items-center gap-2 cursor-pointer select-none text-[12px]" style="font-weight: 700; color: var(--text-dim); list-style: none;">
+              <svg class="chev w-3 h-3 shrink-0" viewBox="0 0 12 12" style="color: var(--text-muted);"><path d="M4 2 L8 6 L4 10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+              Show accounts
+            </summary>
+            <div class="mt-4">
+              <div class="section-label mb-2">Euro equity accounts</div>
+              <div id="smfEuroList"></div>
             </div>
           </details>
         </div>
@@ -737,8 +745,8 @@ renderBreakdown('expenseList', DATA.expense, '€');
     const fmtPct   = v => (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%';
     const fmtPctRaw= v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
 
-    // L1 total
-    const totalVal = sd.zerodhaTotalVal + sd.othersTotalVal;
+    // L1 total — Zerodha + Others + Euro Equity
+    const totalVal = sd.zerodhaTotalVal + sd.othersTotalVal + (sd.euroEquityTotal || 0);
     const totalPL  = sd.familyTotal.pl; // Zerodha P&L only (Others P&L not separately available at L1)
     document.getElementById('smfTotal').textContent   = fmtINR(totalVal);
     document.getElementById('smfPL').innerHTML =
@@ -833,6 +841,26 @@ renderBreakdown('expenseList', DATA.expense, '€');
         <div class="hbar"><span style="width:${(ip.value/maxIpo*100).toFixed(1)}%; background:#84cc16;"></span></div>
       </div>`).join('')
     : '<div class="text-sm" style="color:var(--text-muted);">No non-Zerodha holdings found.</div>';
+
+    // L2 Euro Equity
+    const euroEquity = sd.euroEquity || [];
+    const euroTotal  = sd.euroEquityTotal || 0;
+    document.getElementById('smfEuroVal').textContent = fmtINR(euroTotal);
+
+    // L3 Euro Equity — account list
+    const maxEuro = euroEquity.length ? euroEquity[0].value : 1;
+    document.getElementById('smfEuroList').innerHTML = euroEquity.length ? euroEquity.map(e => `
+      <div style="border-top: 1px solid var(--border); padding: 10px 0;">
+        <div class="flex justify-between items-baseline mb-1">
+          <span class="text-[12px]" style="font-weight:700;">${e.name}</span>
+          <span class="num text-[12px]" style="font-weight:700;">${fmtINR(e.value)}</span>
+        </div>
+        <div class="text-[11px] mb-1.5" style="color:var(--text-muted);">
+          ${fmtCcy(e.bal, e.ccy)}${e.ccy === 'EUR' ? ' · ' + fmtINR(e.value) : ''}
+        </div>
+        <div class="hbar"><span style="width:${(e.value/maxEuro*100).toFixed(1)}%; background:#f97316;"></span></div>
+      </div>`).join('')
+    : '<div class="text-sm" style="color:var(--text-muted);">No Euro equity accounts found.</div>';
   }
 }
 

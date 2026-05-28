@@ -76,7 +76,7 @@ function buildDashboardData() {
     expense:       expenseBreakdown(txns),
     accounts:      accountGroups(accounts),
     recentTxns:    recentTxns(txns, 20),
-    stocksDetail:  readStocksDetail(ss)
+    stocksDetail:  readStocksDetail(ss, accounts)
   };
 }
 
@@ -400,7 +400,7 @@ function runGeminiAdvisor() {
     const nw  = s.total || 1;
     const cf  = cashflow(txns);
     const ccy = currencySplit(accounts);
-    const sd  = readStocksDetail(ss);
+    const sd  = readStocksDetail(ss, accounts);
     const ft  = sd ? (sd.familyTotal || {}) : {};
 
     var avgInc = cf.length ? cf.reduce(function(a,d){return a+d.inc;},0)/cf.length : 0;
@@ -490,7 +490,7 @@ function testGeminiAdvisor() {
 //   Sectors    : header row 35, data rows 36-44 (9 rows)      cols B-D + E-G (merged)
 //   IPO list   : header row 64, data rows 65-104              cols B-G
 // ============================================================
-function readStocksDetail(ss) {
+function readStocksDetail(ss, accounts) {
   try {
     const sh = ss.getSheetByName(SHEETS.STOCKS_MF);
     if (!sh) { Logger.log('Sheet missing: ' + SHEETS.STOCKS_MF); return null; }
@@ -555,10 +555,26 @@ function readStocksDetail(ss) {
         return { account: String(r[0]), stock: String(r[1]), invested: num(r[2]), value: num(r[3]), pl: num(r[4]) };
       });
 
-    return { zerodhaTotalVal, othersTotalVal, accounts: accounts_, familyTotal, assetClass, capSplit, sectors, ipoOthers };
+    // ── Euro Equity from Account sheet (Category = Euro Equity) ─
+    const euroEquity = (accounts || [])
+      .filter(function(a) { return String(a.Category || '').trim() === 'Euro Equity'; })
+      .filter(function(a) { return includeInNetWorth(a); })
+      .map(function(a) {
+        return {
+          name:  String(a.Account || '').trim(),
+          value: num(a['INR Gross Balance']),
+          bal:   num(a.Balance),
+          ccy:   isEur(a.Currency) ? 'EUR' : 'INR'
+        };
+      })
+      .sort(function(a, b) { return b.value - a.value; });
+
+    const euroEquityTotal = euroEquity.reduce(function(s, a) { return s + a.value; }, 0);
+
+    return { zerodhaTotalVal, othersTotalVal, euroEquityTotal, euroEquity, accounts: accounts_, familyTotal, assetClass, capSplit, sectors, ipoOthers };
 
   } catch(e) {
     Logger.log('readStocksDetail error: ' + e.toString());
-    return null;  // returns null safely — UI will skip the section
+    return null;
   }
 }
