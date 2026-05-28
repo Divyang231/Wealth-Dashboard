@@ -660,12 +660,11 @@ renderBreakdown('expenseList', DATA.expense, '€');
 
 // ── Account groups ───────────────────────────────────────────
 {
-  const colors = {
-    'Euro bank accounts': '#f97316', 'INR savings accounts': '#22c55e', 'Stocks & IPO': '#15803d',
-    'Gold': '#eab308', 'Real estate': '#64748b', 'Debt (credit cards)': '#ef4444',
-    'Disputed (under recovery)': '#94a3b8', 'Other': '#94a3b8'
+  const colorMap = {
+    'Liquid': '#e8714a', 'Fixed Deposit': '#3b82f6', 'Stocks & MF': '#15803d',
+    'Gold': '#eab308', 'Real Estate': '#c4a882', 'Falcon': '#94a3b8',
+    'Debt': '#ef4444', 'Other': '#94a3b8'
   };
-  // Sort groups by absolute total value, high to low
   const entries = Object.entries(DATA.accounts).sort((a, b) => {
     const ta = Math.abs(a[1].reduce((s, x) => s + x.inr, 0));
     const tb = Math.abs(b[1].reduce((s, x) => s + x.inr, 0));
@@ -673,14 +672,17 @@ renderBreakdown('expenseList', DATA.expense, '€');
   });
   const totalAccts = entries.reduce((s, [_,v]) => s + v.length, 0);
   document.getElementById('accountsMeta').textContent = `${totalAccts} accounts · tap to expand`;
-  document.getElementById('accountsList').innerHTML = entries.map(([cat, accs], idx) => {
+  document.getElementById('accountsList').innerHTML = entries.map(([lbl, accs], idx) => {
     const t = accs.reduce((s,a) => s + a.inr, 0);
-    const isDisputed = cat === 'Disputed (under recovery)';
+    const isDisputed = lbl === 'Falcon';
     const rows = accs.map(a => `
       <div class="acct-row">
         <div>
           <div class="text-sm" style="font-weight: 600;">${a.name}</div>
-          <div class="text-[11px] num mt-0.5" style="color: var(--text-muted); font-weight: 500;">${fmtCcy(a.bal, a.ccy)}${a.ccy==='EUR' ? ` · ${fmtINR(a.inr)}` : ''}</div>
+          <div class="text-[11px] num mt-0.5" style="color: var(--text-muted); font-weight: 500;">
+            ${a.cat ? a.cat + ' · ' : ''}${fmtCcy(a.bal, a.ccy)}${a.ccy==='EUR' ? ` · ${fmtINR(a.inr)}` : ''}
+            ${!a.incl ? '<span style="margin-left:4px;font-size:9px;color:var(--text-muted);">(excluded)</span>' : ''}
+          </div>
         </div>
         <div class="num text-sm" style="font-weight: 700; color: ${a.inr < 0 ? 'var(--red-deep)' : 'var(--text)'};">${fmtINR(a.inr)}</div>
       </div>`).join('');
@@ -689,8 +691,8 @@ renderBreakdown('expenseList', DATA.expense, '€');
         <summary class="px-5 py-4 flex items-center justify-between">
           <div class="flex items-center gap-3 flex-wrap">
             <svg class="chev w-3 h-3" viewBox="0 0 12 12" style="color: var(--text-muted);"><path d="M4 2 L8 6 L4 10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-            <span class="dot" style="background: ${colors[cat] || '#94a3b8'};"></span>
-            <span class="text-sm" style="font-weight: 700;">${cat}</span>
+            <span class="dot" style="background: ${colorMap[lbl] || '#94a3b8'};"></span>
+            <span class="text-sm" style="font-weight: 700;">${lbl}</span>
             <span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">${accs.length}</span>
             ${isDisputed ? '<span class="pill pill-slate" style="font-size:10px; padding: 2px 8px;">Disputed · excluded from net worth</span>' : ''}
           </div>

@@ -114,15 +114,17 @@ function includeInNetWorth(row) {
 }
 
 function isRealEstate(row) {
-  return String(row.Category || '').trim() === 'RealEstate';
+  return String(row.Label || '').trim() === 'Real Estate';
 }
 
-// Forward-fill Category column
+// Forward-fill Label and Category columns
 function fillCategory(rows) {
-  let last = '';
+  let lastLabel = '', lastCat = '';
   rows.forEach(r => {
-    if (r.Category && String(r.Category).trim()) last = String(r.Category).trim();
-    else r.Category = last;
+    if (r.Label    && String(r.Label).trim())    lastLabel = String(r.Label).trim();
+    else r.Label = lastLabel;
+    if (r.Category && String(r.Category).trim()) lastCat   = String(r.Category).trim();
+    else r.Category = lastCat;
   });
 }
 
@@ -138,63 +140,49 @@ function latestEurRate(accounts) {
 // toggle can add/remove them client-side without a reload.
 // ============================================================
 function summary(accounts) {
-  let base = 0;        // net worth excluding real estate
-  let realEstate = 0;  // real estate total (sent separately for the toggle)
+  let base = 0;
+  let realEstate = 0;
   let liquid = 0, stocksMF = 0, gold = 0, disputed = 0, fixedDeposit = 0;
 
   accounts.forEach(a => {
     const v    = num(a['INR Gross Balance']);
-    const cat  = String(a.Category || '').trim();
-    const incl = includeInNetWorth(a);   // col F must be TRUE
-    const hasCategory = cat !== '';      // col B must have a value
+    const lbl  = String(a.Label || '').trim();
+    const incl = includeInNetWorth(a);  // col G must be TRUE
 
-    // Skip rows where col B is blank — no category means not counted
-    if (!hasCategory) return;
+    // Skip rows where Label (col B) is blank — not counted anywhere
+    if (!lbl) return;
 
-    // Real estate: accumulate separately for the UI toggle.
-    // Only count if col F is TRUE (same as net worth logic).
-    if (cat === 'RealEstate') {
+    // Real Estate: accumulate separately for the UI toggle, only if col G = TRUE
+    if (lbl === 'Real Estate') {
       if (incl) realEstate += v;
       return;
     }
 
-    // Skip rows excluded from net worth (col F = FALSE) for all KPIs
+    // Skip rows excluded from net worth (col G = FALSE)
     if (!incl) return;
 
-    // Net worth base (everything except real estate, where col F = TRUE)
+    // Net worth base
     base += v;
 
-    // KPI buckets — col F already checked above
-    switch (cat) {
-      case 'Euro':
-      case 'Savings A/C':
-      case 'IPO Fund':          // IPO Fund is liquid, not invested
-        liquid += v; break;
-      case 'Stocks':
-      case 'Investment':        // Stocks & MF bucket
-        stocksMF += v; break;
-      case 'Stocks covered in 15':
-        break;                  // skip — already counted in the linked row
-      case 'Fixed Deposit':
-        fixedDeposit += v; break;
-      case 'Gold':
-        gold += v; break;
-      case 'Falcon':
-        disputed += v; break;  // tracked for drill-down tag, not hero
+    // Hero KPI buckets — driven directly by Label
+    switch (lbl) {
+      case 'Liquid':         liquid       += v; break;
+      case 'Stocks & MF':   stocksMF     += v; break;
+      case 'Fixed Deposit':  fixedDeposit += v; break;
+      case 'Gold':           gold         += v; break;
+      case 'Falcon':         disputed     += v; break;
     }
   });
 
-  // total = base + realEstate
-  // The UI toggle will subtract realEstate client-side when switched off
   return {
-    total:      Math.round(base + realEstate),
-    base:       Math.round(base),        // net worth without real estate
-    realEstate: Math.round(realEstate),  // real estate portion, for the toggle
-    liquid:     Math.round(liquid),
-    stocksMF:   Math.round(stocksMF),
-    gold:       Math.round(gold),
+    total:        Math.round(base + realEstate),
+    base:         Math.round(base),
+    realEstate:   Math.round(realEstate),
+    liquid:       Math.round(liquid),
+    stocksMF:     Math.round(stocksMF),
+    gold:         Math.round(gold),
     fixedDeposit: Math.round(fixedDeposit),
-    disputed:   Math.round(disputed)
+    disputed:     Math.round(disputed)
   };
 }
 
@@ -219,37 +207,27 @@ function trend(history) {
 // ALLOCATION
 // ============================================================
 function allocation(accounts) {
-  const labelMap = {
-    'Stocks':       'Stocks & IPO',
-    'IPO Fund':     'Stocks & IPO',
-    'Investment':   'Mutual funds',
-    'Euro':         'Euro bank',
-    'Savings A/C':  'INR savings',
-    'Gold':         'Gold',
-    'RealEstate':   'Real estate',
-    'Fixed Deposit': 'Fixed Deposit',
-    'Debt':         'Debt (cards)'
-  };
   const colorMap = {
-    'Stocks & IPO':  PALETTE.green,
-    'Euro bank':     PALETTE.orange,
-    'INR savings':   PALETTE.greenDeep,
-    'Gold':          PALETTE.gold,
-    'Mutual funds':  PALETTE.purple,
-    'Real estate':   PALETTE.slate,
+    'Liquid':         '#e8714a',
+    'Stocks & MF':    PALETTE.greenDeep,
     'Fixed Deposit':  '#3b82f6',
-    'Debt (cards)':  PALETTE.red
+    'Gold':           PALETTE.gold,
+    'Real Estate':    PALETTE.slate,
+    'Falcon':         PALETTE.slateLight,
+    'Debt':           PALETTE.red
   };
   const sums = {};
   accounts.forEach(a => {
-    if (a.Category === 'Stocks covered in 15') return;
-    const label = labelMap[a.Category] || a.Category || 'Other';
-    sums[label] = (sums[label] || 0) + num(a['INR Gross Balance']);
+    const lbl = String(a.Label || '').trim();
+    if (!lbl) return;
+    const incl = includeInNetWorth(a);
+    if (!incl && lbl !== 'Real Estate') return;
+    sums[lbl] = (sums[lbl] || 0) + num(a['INR Gross Balance']);
   });
   return Object.keys(sums).map(label => ({
     label,
     value: Math.round(sums[label]),
-    color: colorMap[label] || PALETTE.taupe
+    color: colorMap[label] || PALETTE.slate
   }));
 }
 
@@ -272,9 +250,10 @@ function currencySplit(accounts) {
 function perHolder(accounts) {
   let hiral = 0, divyang = 0, family = 0, debt = 0;
   accounts.forEach(a => {
-    const v = num(a['INR Gross Balance']);
+    const v   = num(a['INR Gross Balance']);
+    const lbl = String(a.Label || '').trim();
     const name = String(a.Account || '').toLowerCase();
-    if (a.Category === 'Debt') debt += v;
+    if (lbl === 'Debt') debt += v;
     else if (name.indexOf('hiral') >= 0) hiral += v;
     else if (name.indexOf('divyang') >= 0) divyang += v;
     else family += v;
@@ -350,36 +329,36 @@ function breakdown_(txns, typeWanted, amountCol, palette) {
 // ACCOUNT GROUPS
 // ============================================================
 function accountGroups(accounts) {
-  const groupMap = {
-    'Euro':         'Euro bank accounts',
-    'Savings A/C':  'INR savings accounts',
-    'Stocks':       'Stocks & IPO',
-    'IPO Fund':     'Stocks & IPO',
-    'Investment':   'Stocks & IPO',
-    'Fixed Deposit': 'Fixed deposits',
-    'Gold':         'Gold',
-    'RealEstate':   'Real estate',
-    'Debt':         'Debt (credit cards)'
+  const colorMap = {
+    'Liquid':         '#e8714a',
+    'Stocks & MF':    '#15803d',
+    'Fixed Deposit':  '#3b82f6',
+    'Gold':           '#eab308',
+    'Real Estate':    '#c4a882',
+    'Falcon':         '#94a3b8',
+    'Debt':           '#ef4444'
   };
   const groups = {};
   accounts.forEach(a => {
-    if (!a.Account) return;
-    if (a.Category === 'Stocks covered in 15') return;
+    const lbl = String(a.Label || '').trim();
+    const acct = String(a.Account || a.Category || '').trim();
+    if (!lbl || !acct) return;
     const v = num(a['INR Gross Balance']);
     if (v === 0) return;
-    const grp = groupMap[a.Category] || 'Other';
-    if (!groups[grp]) groups[grp] = [];
-    groups[grp].push({
-      name: String(a.Account),
+    if (!groups[lbl]) groups[lbl] = [];
+    groups[lbl].push({
+      name: acct,
+      cat:  String(a.Category || '').trim(),
       bal:  num(a.Balance),
       ccy:  isEur(a.Currency) ? 'EUR' : 'INR',
-      inr:  Math.round(v)
+      inr:  Math.round(v),
+      incl: includeInNetWorth(a)
     });
   });
   Object.keys(groups).forEach(g =>
     groups[g].sort((a, b) => Math.abs(b.inr) - Math.abs(a.inr))
   );
-  const order = ['Euro bank accounts', 'INR savings accounts', 'Stocks & IPO', 'Gold', 'Real estate', 'Disputed (under recovery)', 'Debt (credit cards)', 'Other'];
+  const order = ['Liquid', 'Fixed Deposit', 'Stocks & MF', 'Gold', 'Real Estate', 'Falcon', 'Debt', 'Other'];
   const out = {};
   order.forEach(k => { if (groups[k]) out[k] = groups[k]; });
   return out;
