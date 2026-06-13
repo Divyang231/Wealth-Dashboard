@@ -22,6 +22,8 @@ const SHEETS = {
   STOCKS_MF: 'Stocks + MF Summary'
 };
 
+const TRACKER_SHEET_NAME = 'Tracker';
+
 const EUR_CCYS = ['EUR', 'Eur', 'Euro', 'EURO'];
 
 const PALETTE = {
@@ -42,7 +44,12 @@ const PALETTE = {
 // ============================================================
 // ENTRY POINT
 // ============================================================
-function doGet() {
+function doGet(e) {
+  if (e && e.parameter && e.parameter.action === 'tracker') {
+    return ContentService.createTextOutput(
+      JSON.stringify(getTrackerState())
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
   const t = HtmlService.createTemplateFromFile('Index');
   t.data = JSON.stringify(buildDashboardData());
   return t.evaluate()
@@ -577,4 +584,85 @@ function readStocksDetail(ss, accounts) {
     Logger.log('readStocksDetail error: ' + e.toString());
     return null;
   }
+}
+
+// ============================================================
+// PORTFOLIO ACTION TRACKER — backend for the reallocation
+// tracker artifact. Adds a "Tracker" tab to this same workbook.
+// ============================================================
+
+function doPost(e) {
+  const body = JSON.parse(e.postData.contents);
+  updateTrackerItem(body.taskId, body.done, body.note);
+  return ContentService.createTextOutput(
+    JSON.stringify({ ok: true })
+  ).setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ---------- ONE-TIME SETUP ----------
+   Run this once from the Apps Script editor (select
+   runSetupTracker from the function dropdown, click Run).
+   Creates the "Tracker" tab and seeds all task IDs.
+---------------------------------------------------------------- */
+function runSetupTracker() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(TRACKER_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(TRACKER_SHEET_NAME);
+  }
+  sheet.clear();
+  sheet.getRange(1, 1, 1, 4).setValues([['task_id', 'done', 'note', 'last_updated']]);
+  sheet.setFrozenRows(1);
+
+  const taskIds = [
+    'ex-mukka','ex-mepz','ex-rajexpo','ex-balajee','ex-radiowalla','ex-happstmnds',
+    'ex-medistep','ex-msafe','ex-simca','ex-srtl','ex-aatmaj','ex-cotfab',
+    'ex-wcil','ex-mril','ex-ikio','ex-gmmpfaudlr','ex-aartiind','ex-indiqube',
+    'ex-navnetedul','ex-manba','ex-sambhv','ex-vidyawires','ex-vmstmt',
+    'tax-sequence','tax-confirm-holding',
+    'buy-hal1','buy-lt1','buy-kei1','buy-kpit1',
+    'buy-eil','buy-gravita1','buy-nmdc1','buy-wabag',
+    'buy-sgb','check-sgb-secondary',
+    'buy-dfns','verify-vvsm-isin','buy-vvsm','start-cspx-stp',
+    'watch-vvmx','verify-whca-isin','watch-whca',
+    'alert-bel','alert-solar','alert-waaree','alert-linde','alert-grid','alert-kei2',
+    'research-ksb','research-coalindia','research-wabag-flags',
+    'marc-plan'
+  ];
+
+  const rows = taskIds.map(id => [id, false, '', '']);
+  sheet.getRange(2, 1, rows.length, 4).setValues(rows);
+
+  SpreadsheetApp.getUi().alert('Tracker sheet created with ' + rows.length + ' tasks.');
+}
+
+/* ---------- READ all tracker states ---------- */
+function getTrackerState() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TRACKER_SHEET_NAME);
+  if (!sheet) return {};
+  const data = sheet.getDataRange().getValues();
+  const state = {};
+  for (let i = 1; i < data.length; i++) {
+    const [taskId, done, note] = data[i];
+    if (!taskId) continue;
+    state[taskId] = { done: !!done, note: note || '' };
+  }
+  return state;
+}
+
+/* ---------- WRITE one tracker item ---------- */
+function updateTrackerItem(taskId, done, note) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TRACKER_SHEET_NAME);
+  if (!sheet) throw new Error('Tracker sheet not found — run runSetupTracker first.');
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === taskId) {
+      sheet.getRange(i + 1, 2).setValue(done);
+      sheet.getRange(i + 1, 3).setValue(note || '');
+      sheet.getRange(i + 1, 4).setValue(new Date());
+      return true;
+    }
+  }
+  sheet.appendRow([taskId, done, note || '', new Date()]);
+  return true;
 }
