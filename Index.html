@@ -253,7 +253,10 @@
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div><div class="section-label">Trajectory</div><div class="text-2xl mt-0.5" style="font-weight: 800;">Wealth over time</div></div>
         <div class="flex items-center gap-1 p-1 rounded-full" style="background: var(--card-inner);">
-          <button class="tab-btn">3M</button><button class="tab-btn active">6M</button><button class="tab-btn">1Y</button><button class="tab-btn">All</button>
+          <button class="tab-btn" onclick="setTrendRange(3, this)">3M</button>
+          <button class="tab-btn active" onclick="setTrendRange(6, this)">6M</button>
+          <button class="tab-btn" onclick="setTrendRange(12, this)">1Y</button>
+          <button class="tab-btn" onclick="setTrendRange('all', this)">All</button>
         </div>
       </div>
       <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
@@ -464,6 +467,15 @@
 <script>
 const DATA = <?!= data ?>;
 
+// Parses a 'yyyy-MM-dd' string by its literal components instead of
+// new Date(str), which avoids UTC/local-timezone off-by-one-day (or
+// off-by-one-month, on month-end dates) bugs depending on the viewer's
+// timezone. Used everywhere a server-formatted date string is displayed.
+function parseISODate(s) {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 // ── Formatters ───────────────────────────────────────────────
 const fmtINR = n => {
   if (!n) return '₹0';
@@ -526,24 +538,8 @@ document.getElementById('reToggleAmt').textContent = fmtINR(DATA.summary.realEst
 // Initial hero render
 updateHeroNumber();
 
-// ── Hero change pill ─────────────────────────────────────────
-{
-  const tr = DATA.trend;
-  const chip = document.getElementById('heroChange');
-  if (tr.length >= 2) {
-    const delta = tr[tr.length - 1].total - tr[0].total;
-    const positive = delta >= 0;
-    const pct = tr[0].total ? (delta / tr[0].total * 100) : 0;
-    chip.className = 'pill ' + (positive ? 'pill-green' : 'pill-orange');
-    const arrow = positive
-      ? '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 8 L6 4 L10 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-      : '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 4 L6 8 L10 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    const sign = positive ? '+' : '−';
-    chip.innerHTML = `${arrow} ${sign}${Math.abs(pct).toFixed(1)}% · ${tr.length} snapshots`;
-  } else {
-    chip.style.display = 'none';
-  }
-}
+// Note: the "hero change" pill is now computed inside trendRender() below,
+// so it stays in sync with whichever range (3M/6M/1Y/All) is selected.
 
 // ── KPI tiles ────────────────────────────────────────────────
 {
@@ -569,16 +565,23 @@ updateHeroNumber();
 
 // ── Trend chart ──────────────────────────────────────────────
 {
+  const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function monthLabel(s) {
+    const dt = parseISODate(s);
+    return MONTH_ABBR[dt.getMonth()] + " '" + String(dt.getFullYear()).slice(-2);
+  }
+
   const ctx = document.getElementById('trendChart');
   const grad = ctx.getContext('2d').createLinearGradient(0, 0, 0, 240);
   grad.addColorStop(0, 'rgba(34, 197, 94, 0.28)');
   grad.addColorStop(1, 'rgba(34, 197, 94, 0)');
-  new Chart(ctx, {
+
+  const trendChart = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: DATA.trend.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })),
+      labels: [],
       datasets: [{
-        data: DATA.trend.map(d => d.total),
+        data: [],
         borderColor: '#22c55e', backgroundColor: grad,
         borderWidth: 3, fill: true, tension: 0.4,
         pointRadius: 0, pointHoverRadius: 7,
@@ -598,6 +601,45 @@ updateHeroNumber();
       }
     }
   });
+
+  function trendFilter(range) {
+    if (range === 'all') return DATA.trend;
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - Number(range));
+    return DATA.trend.filter(d => parseISODate(d.date) >= cutoff);
+  }
+
+  function trendRender(range) {
+    const rows = trendFilter(range);
+    trendChart.data.labels = rows.map(d => monthLabel(d.date));
+    trendChart.data.datasets[0].data = rows.map(d => d.total);
+    trendChart.update();
+
+    // Keep the hero "change" pill in sync with whatever range is showing
+    const chip = document.getElementById('heroChange');
+    if (rows.length >= 2) {
+      const delta = rows[rows.length - 1].total - rows[0].total;
+      const positive = delta >= 0;
+      const pct = rows[0].total ? (delta / rows[0].total * 100) : 0;
+      chip.style.display = '';
+      chip.className = 'pill ' + (positive ? 'pill-green' : 'pill-orange');
+      const arrow = positive
+        ? '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 8 L6 4 L10 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        : '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 4 L6 8 L10 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      const sign = positive ? '+' : '−';
+      chip.innerHTML = `${arrow} ${sign}${Math.abs(pct).toFixed(1)}% · ${rows.length} snapshots`;
+    } else {
+      chip.style.display = 'none';
+    }
+  }
+
+  window.setTrendRange = function(range, btn) {
+    btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    trendRender(range);
+  };
+
+  trendRender(6); // default: 6M, matching the active button
 }
 
 // ── Donut chart ──────────────────────────────────────────────
@@ -715,7 +757,7 @@ renderBreakdown('expenseList', DATA.expense, '€');
     if (range === 'all') return PI_DATA;
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - Number(range));
-    return PI_DATA.filter(d => new Date(d.date) >= cutoff);
+    return PI_DATA.filter(d => parseISODate(d.date) >= cutoff);
   }
 
   function piRenderGroups(rows) {
@@ -763,7 +805,7 @@ renderBreakdown('expenseList', DATA.expense, '€');
             <div class="pi-leaf">
               <div class="min-w-0">
                 <div class="text-sm truncate" style="font-weight: 600;">${leaf.note || 'No note'}</div>
-                <div class="text-[11px] mt-0.5" style="color: var(--text-muted); font-weight: 500;">${new Date(leaf.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                <div class="text-[11px] mt-0.5" style="color: var(--text-muted); font-weight: 500;">${parseISODate(leaf.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
               </div>
               <div class="num text-sm shrink-0" style="font-weight: 700;">₹${leaf.amt.toLocaleString('en-IN')}</div>
             </div>`).join('');
