@@ -93,17 +93,30 @@ function takeMonthlySnapshotIfNeeded() {
     if (!historySheet) return;
 
     const thisMonthKey = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM');
-    const lastCol = Math.max(historySheet.getLastColumn(), 9);
+    const lastCol = historySheet.getLastColumn();
     const lastRow = historySheet.getLastRow();
+    if (lastCol < 1) return;
+
+    // Read actual header positions rather than assuming fixed column
+    // order — resilient to columns being reordered or added later.
+    const headers = historySheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+    const colIndex = {};
+    headers.forEach((h, i) => { if (h) colIndex[h] = i; });
+    const required = ['Category','Account','Balance','Currency','Euro rate','INR Gross Balance','Date','Label','Include in Net Worth'];
+    const missing = required.filter(h => !(h in colIndex));
+    if (missing.length) {
+      Logger.log('Snapshot skipped — missing history column(s): ' + missing.join(', '));
+      return;
+    }
+    const numCols = headers.length;
 
     // Keep every existing row EXCEPT ones already snapshotted for the
     // current calendar month — those get replaced with fresh numbers.
     let keptRows = [];
     if (lastRow > 1) {
-      const data = historySheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
-      const DATE_COL = 6; // 0-indexed: Category,Account,Balance,Currency,Euro rate,INR Gross Balance,Date,...
+      const data = historySheet.getRange(2, 1, lastRow - 1, numCols).getValues();
       keptRows = data.filter(r => {
-        const d = r[DATE_COL];
+        const d = r[colIndex['Date']];
         if (!(d instanceof Date)) return true; // keep malformed/legacy rows untouched
         return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM') !== thisMonthKey;
       });
@@ -114,23 +127,23 @@ function takeMonthlySnapshotIfNeeded() {
     accounts.forEach(a => {
       const acctName = String(a.Account || '').trim();
       if (!acctName) return;
-      freshRows.push([
-        String(a.Category || '').trim(),
-        acctName,
-        a.Balance || 0,
-        a.Currency || '',
-        a['Euro rate'] || '',
-        num(a['INR Gross Balance']),
-        now,
-        String(a.Label || '').trim(),
-        includeInNetWorth(a) ? 'TRUE' : 'FALSE'
-      ]);
+      const row = new Array(numCols).fill('');
+      row[colIndex['Category']] = String(a.Category || '').trim();
+      row[colIndex['Account']] = acctName;
+      row[colIndex['Balance']] = a.Balance || 0;
+      row[colIndex['Currency']] = a.Currency || '';
+      row[colIndex['Euro rate']] = a['Euro rate'] || '';
+      row[colIndex['INR Gross Balance']] = num(a['INR Gross Balance']);
+      row[colIndex['Date']] = now;
+      row[colIndex['Label']] = String(a.Label || '').trim();
+      row[colIndex['Include in Net Worth']] = includeInNetWorth(a) ? 'TRUE' : 'FALSE';
+      freshRows.push(row);
     });
     if (!freshRows.length) return;
 
     const allRows = keptRows.concat(freshRows);
-    historySheet.getRange(2, 1, Math.max(historySheet.getMaxRows() - 1, allRows.length), lastCol).clearContent();
-    historySheet.getRange(2, 1, allRows.length, lastCol).setValues(allRows);
+    historySheet.getRange(2, 1, Math.max(historySheet.getMaxRows() - 1, allRows.length), numCols).clearContent();
+    historySheet.getRange(2, 1, allRows.length, numCols).setValues(allRows);
 
     props.setProperty(SNAPSHOT_LAST_RUN_KEY, todayKey);
     Logger.log('Snapshot refreshed for ' + thisMonthKey + ': ' + freshRows.length + ' accounts (' + allRows.length + ' total history rows).');
