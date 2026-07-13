@@ -101,6 +101,17 @@
   .re-toggle-label { font-size: 12px; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
   .re-toggle-wrap.on .re-toggle-label { color: var(--text); }
   .re-amount { font-size: 11px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+  /* Passive Income group cards */
+  .pi-group { border: 1px solid var(--border); border-radius: 16px; overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s; background: var(--card-inner); }
+  .pi-group[open] { border-color: var(--border-strong); box-shadow: 0 2px 8px rgba(26,29,31,0.05); }
+  .pi-group summary { transition: background 0.15s; }
+  .pi-group summary:hover { background: rgba(26,29,31,0.035); }
+  .pi-bar { position: relative; height: 5px; border-radius: 999px; background: var(--border); overflow: hidden; margin-top: 10px; }
+  .pi-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 999px; }
+  .pi-children { background: var(--card); }
+  .pi-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 16px 11px 14px; border-top: 1px solid var(--border); border-left: 3px solid transparent; }
+  .pi-child:hover { background: var(--card-inner); }
 </style>
 </head>
 <body class="pb-16">
@@ -189,7 +200,7 @@
       </div>
       <div class="hero-num text-[40px] sm:text-[48px] mb-1" id="piTotal">₹0</div>
       <div class="text-[12px] mb-5" style="color: var(--text-muted); font-weight: 500;" id="piRangeLabel"></div>
-      <div id="piCategoryList" class="space-y-4"></div>
+      <div id="piCategoryList" class="space-y-3"></div>
     </div>
   </section>
 
@@ -557,31 +568,35 @@ renderBreakdown('expenseList', DATA.expense, '€');
 
     document.getElementById('piCategoryList').innerHTML = parents.map((g, idx) => {
       const color = piColors[idx % piColors.length];
+      const pct = total ? (g.amt/total*100) : 0;
       const rowsHtml = g.items
         .sort((a, b) => new Date(b.date) - new Date(a.date))
         .map(i => `
-          <div class="flex items-center justify-between py-2.5" style="border-top: 1px solid var(--border);">
+          <div class="pi-child" style="border-left-color: ${color};">
             <div class="min-w-0">
               <div class="text-sm truncate" style="font-weight: 600;">${i.cat}</div>
               <div class="text-[11px] mt-0.5" style="color: var(--text-muted); font-weight: 500;">${new Date(i.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
             </div>
-            <div class="num text-sm shrink-0 pl-3" style="font-weight: 700;">₹${i.amt.toLocaleString('en-IN')}</div>
+            <div class="num text-sm shrink-0" style="font-weight: 700;">₹${i.amt.toLocaleString('en-IN')}</div>
           </div>`).join('');
       return `
-        <details ${idx === 0 ? 'open' : ''} class="card-inner">
-          <summary class="px-4 py-3.5 flex items-center justify-between">
-            <div class="flex items-center gap-2.5 min-w-0">
-              <svg class="chev w-3 h-3 shrink-0" viewBox="0 0 12 12" style="color: var(--text-muted);"><path d="M4 2 L8 6 L4 10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-              <span class="dot shrink-0" style="background: ${color};"></span>
-              <span class="text-sm truncate" style="font-weight: 700;">${g.label}</span>
-              <span class="text-[11px] shrink-0" style="color: var(--text-muted); font-weight: 600;">${g.items.length}</span>
+        <details ${idx === 0 ? 'open' : ''} class="pi-group">
+          <summary class="px-4 sm:px-5 py-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3 min-w-0">
+                <svg class="chev w-3 h-3 shrink-0" viewBox="0 0 12 12" style="color: var(--text-muted);"><path d="M4 2 L8 6 L4 10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                <span class="dot shrink-0" style="width: 10px; height: 10px; background: ${color};"></span>
+                <span class="text-[15px] truncate" style="font-weight: 700;">${g.label}</span>
+                <span class="pill pill-neutral shrink-0" style="font-size: 10px; padding: 2px 9px;">${g.items.length} ${g.items.length === 1 ? 'entry' : 'entries'}</span>
+              </div>
+              <div class="text-right shrink-0">
+                <div class="num text-base" style="font-weight: 800;">₹${g.amt.toLocaleString('en-IN')}</div>
+                <div class="text-[11px] num" style="color: var(--text-muted); font-weight: 600;">${pct.toFixed(1)}%</div>
+              </div>
             </div>
-            <div class="text-right shrink-0 pl-3">
-              <div class="num text-sm" style="font-weight: 700;">₹${g.amt.toLocaleString('en-IN')}</div>
-              <div class="text-[10px]" style="color: var(--text-muted); font-weight: 600;">${(g.amt/total*100).toFixed(1)}%</div>
-            </div>
+            <div class="pi-bar"><span style="width: ${pct.toFixed(1)}%; background: ${color};"></span></div>
           </summary>
-          <div class="px-4 pb-1">${rowsHtml}</div>
+          <div class="pi-children">${rowsHtml}</div>
         </details>`;
     }).join('');
   }
