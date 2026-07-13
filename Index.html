@@ -522,11 +522,68 @@ renderBreakdown('expenseList', DATA.expense, '€');
   const PI_DATA = DATA.passiveIncome || [];
   const piColors = ['#22c55e', '#15803d', '#84cc16', '#eab308', '#06b6d4', '#8b5cf6', '#f97316', '#64748b'];
 
+  // Categories are dynamic (new ones can appear anytime), but anything
+  // starting with "IPO Profit" always rolls up into one parent group.
+  function piParentLabel(cat) {
+    const c = String(cat || '').trim();
+    return /^ipo profit/i.test(c) ? 'IPO Profit' : (c || 'Other');
+  }
+
   function piFilter(range) {
     if (range === 'all') return PI_DATA;
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - Number(range));
     return PI_DATA.filter(d => new Date(d.date) >= cutoff);
+  }
+
+  function piRenderGroups(rows) {
+    const total = rows.reduce((s, r) => s + r.amt, 0);
+    const groups = {};
+    rows.forEach(r => {
+      const label = piParentLabel(r.cat);
+      if (!groups[label]) groups[label] = [];
+      groups[label].push(r);
+    });
+
+    const parents = Object.keys(groups)
+      .map(label => ({ label, items: groups[label], amt: groups[label].reduce((s,i) => s + i.amt, 0) }))
+      .filter(g => g.amt > 0)
+      .sort((a, b) => b.amt - a.amt);
+
+    if (!parents.length) {
+      document.getElementById('piCategoryList').innerHTML = '<div class="text-sm" style="color: var(--text-muted);">No income entries in this range.</div>';
+      return;
+    }
+
+    document.getElementById('piCategoryList').innerHTML = parents.map((g, idx) => {
+      const color = piColors[idx % piColors.length];
+      const rowsHtml = g.items
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .map(i => `
+          <div class="flex items-center justify-between py-2.5" style="border-top: 1px solid var(--border);">
+            <div class="min-w-0">
+              <div class="text-sm truncate" style="font-weight: 600;">${i.cat}</div>
+              <div class="text-[11px] mt-0.5" style="color: var(--text-muted); font-weight: 500;">${new Date(i.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+            </div>
+            <div class="num text-sm shrink-0 pl-3" style="font-weight: 700;">₹${i.amt.toLocaleString('en-IN')}</div>
+          </div>`).join('');
+      return `
+        <details ${idx === 0 ? 'open' : ''} class="card-inner">
+          <summary class="px-4 py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <svg class="chev w-3 h-3 shrink-0" viewBox="0 0 12 12" style="color: var(--text-muted);"><path d="M4 2 L8 6 L4 10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+              <span class="dot shrink-0" style="background: ${color};"></span>
+              <span class="text-sm truncate" style="font-weight: 700;">${g.label}</span>
+              <span class="text-[11px] shrink-0" style="color: var(--text-muted); font-weight: 600;">${g.items.length}</span>
+            </div>
+            <div class="text-right shrink-0 pl-3">
+              <div class="num text-sm" style="font-weight: 700;">₹${g.amt.toLocaleString('en-IN')}</div>
+              <div class="text-[10px]" style="color: var(--text-muted); font-weight: 600;">${(g.amt/total*100).toFixed(1)}%</div>
+            </div>
+          </summary>
+          <div class="px-4 pb-1">${rowsHtml}</div>
+        </details>`;
+    }).join('');
   }
 
   function piRender(range) {
@@ -536,15 +593,7 @@ renderBreakdown('expenseList', DATA.expense, '€');
     document.getElementById('piRangeLabel').textContent = range === 'all'
       ? `All-time · ${rows.length} entries`
       : `Last ${range} months · ${rows.length} entries`;
-
-    const sums = {};
-    rows.forEach(r => { sums[r.cat] = (sums[r.cat] || 0) + r.amt; });
-    const items = Object.keys(sums)
-      .map(cat => ({ cat, amt: sums[cat] }))
-      .filter(x => x.amt > 0)
-      .sort((a, b) => b.amt - a.amt)
-      .map((x, i) => Object.assign(x, { color: piColors[i % piColors.length] }));
-    renderBreakdown('piCategoryList', items, '₹');
+    piRenderGroups(rows);
   }
 
   window.setPassiveIncomeRange = function(range, btn) {
