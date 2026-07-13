@@ -54,12 +54,98 @@ function doGet(e) {
       JSON.stringify(getTrackerState())
     ).setMimeType(ContentService.MimeType.JSON);
   }
+  takeMonthlySnapshotIfNeeded();
   const t = HtmlService.createTemplateFromFile('Index');
   t.data = JSON.stringify(buildDashboardData());
   return t.evaluate()
     .setTitle('Family Treasury')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// ============================================================
+// MONTHLY SNAPSHOT — self-triggering, no Apps Script time trigger
+// involved (those silently stop firing after a few months with no
+// warning). Instead, every dashboard load checks whether it's been
+// refreshed today, and if not, replaces the CURRENT calendar month's
+// snapshot rows with fresh numbers from the Account sheet. Opening the
+// app during a month keeps updating that month's numbers; once the
+// calendar rolls to a new month, the old month's rows stop being
+// touched — so whichever open happened last before month-end is what
+// permanently sticks, not whichever happened first.
+//
+// Each snapshot row copies Label and Include in Net Worth exactly as
+// they are on the Account sheet at that moment, so future totals never
+// need after-the-fact guessing about what was "really" included —
+// the same rule used for today's live total is baked into every row.
+// ============================================================
+const SNAPSHOT_LAST_RUN_KEY = 'LAST_SNAPSHOT_RUN_DATE';
+
+function takeMonthlySnapshotIfNeeded() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const now = new Date();
+    const todayKey = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    if (props.getProperty(SNAPSHOT_LAST_RUN_KEY) === todayKey) return; // at most once/day
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const historySheet = ss.getSheetByName(SHEETS.HISTORY);
+    if (!historySheet) return;
+
+    const thisMonthKey = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM');
+    const lastCol = Math.max(historySheet.getLastColumn(), 9);
+    const lastRow = historySheet.getLastRow();
+
+    // Keep every existing row EXCEPT ones already snapshotted for the
+    // current calendar month — those get replaced with fresh numbers.
+    let keptRows = [];
+    if (lastRow > 1) {
+      const data = historySheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+      const DATE_COL = 6; // 0-indexed: Category,Account,Balance,Currency,Euro rate,INR Gross Balance,Date,...
+      keptRows = data.filter(r => {
+        const d = r[DATE_COL];
+        if (!(d instanceof Date)) return true; // keep malformed/legacy rows untouched
+        return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM') !== thisMonthKey;
+      });
+    }
+
+    const accounts = readSheet(ss, SHEETS.ACCOUNTS);
+    const freshRows = [];
+    accounts.forEach(a => {
+      const acctName = String(a.Account || '').trim();
+      if (!acctName) return;
+      freshRows.push([
+        String(a.Category || '').trim(),
+        acctName,
+        a.Balance || 0,
+        a.Currency || '',
+        a['Euro rate'] || '',
+        num(a['INR Gross Balance']),
+        now,
+        String(a.Label || '').trim(),
+        includeInNetWorth(a) ? 'TRUE' : 'FALSE'
+      ]);
+    });
+    if (!freshRows.length) return;
+
+    const allRows = keptRows.concat(freshRows);
+    historySheet.getRange(2, 1, Math.max(historySheet.getMaxRows() - 1, allRows.length), lastCol).clearContent();
+    historySheet.getRange(2, 1, allRows.length, lastCol).setValues(allRows);
+
+    props.setProperty(SNAPSHOT_LAST_RUN_KEY, todayKey);
+    Logger.log('Snapshot refreshed for ' + thisMonthKey + ': ' + freshRows.length + ' accounts (' + allRows.length + ' total history rows).');
+  } catch (err) {
+    // A snapshot failure should never break the dashboard itself.
+    Logger.log('takeMonthlySnapshotIfNeeded error: ' + err.toString());
+  }
+}
+
+// Callable manually from the Apps Script editor (select this function,
+// click Run) if you want to force a refresh without waiting for the
+// once-per-day check — e.g. right after updating Zerodha data.
+function takeMonthlySnapshotNow() {
+  PropertiesService.getScriptProperties().deleteProperty(SNAPSHOT_LAST_RUN_KEY);
+  takeMonthlySnapshotIfNeeded();
 }
 
 // ============================================================
@@ -209,6 +295,11 @@ function trend(history) {
   history.forEach(r => {
     const d = r.Date;
     if (!(d instanceof Date)) return;
+    // Only count rows explicitly flagged Include in Net Worth = TRUE at
+    // snapshot time. Older manually-preserved rows without this column
+    // populated fall through to includeInNetWorth()'s default (false) —
+    // set that column to TRUE on any such rows you want kept in the chart.
+    if (!includeInNetWorth(r)) return;
     const key = Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
     buckets[key] = (buckets[key] || 0) + num(r['INR Gross Balance']);
   });
