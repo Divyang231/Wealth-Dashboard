@@ -609,10 +609,32 @@ updateHeroNumber();
     return DATA.trend.filter(d => parseISODate(d.date) >= cutoff);
   }
 
+  // Fills in a null-valued point for every calendar month between two
+  // known data points, so Chart.js (spanGaps defaults to false) draws a
+  // visible break instead of a straight line across months we have no
+  // real data for. Spacing on the x-axis then reflects real elapsed time.
+  function expandWithGaps(rows) {
+    if (rows.length < 2) return rows;
+    const out = [];
+    for (let i = 0; i < rows.length; i++) {
+      out.push(rows[i]);
+      if (i === rows.length - 1) break;
+      let cur = parseISODate(rows[i].date);
+      const next = parseISODate(rows[i + 1].date);
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+      while (cur < new Date(next.getFullYear(), next.getMonth(), 1)) {
+        out.push({ date: cur.getFullYear() + '-' + String(cur.getMonth() + 1).padStart(2, '0') + '-01', total: null });
+        cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+      }
+    }
+    return out;
+  }
+
   function trendRender(range) {
     const rows = trendFilter(range);
-    trendChart.data.labels = rows.map(d => monthLabel(d.date));
-    trendChart.data.datasets[0].data = rows.map(d => d.total);
+    const displayRows = expandWithGaps(rows);
+    trendChart.data.labels = displayRows.map(d => monthLabel(d.date));
+    trendChart.data.datasets[0].data = displayRows.map(d => d.total);
     trendChart.update();
 
     // Keep the hero "change" pill in sync with whatever range is showing
