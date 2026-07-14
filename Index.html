@@ -280,52 +280,31 @@
     </div>
   </section>
 
-  <section class="reveal reveal-3 grid grid-cols-1 lg:grid-cols-5 gap-5 mb-5">
-    <div class="card p-5 sm:p-6 lg:col-span-2">
-      <div class="section-label mb-1">Allocation</div>
-      <div class="text-2xl mb-5" style="font-weight: 800;">By asset class</div>
-      <div class="relative grid place-items-center mb-2">
-        <canvas id="donut" width="220" height="220"></canvas>
-        <div class="absolute inset-0 grid place-items-center pointer-events-none">
-          <div class="text-center">
-            <div class="text-[10px] tracking-widest" style="color: var(--text-muted); font-weight: 700;">CLASSES</div>
-            <div id="donutCenter" class="text-2xl mt-0.5" style="font-weight: 800;"></div>
+  <section class="reveal reveal-3 mb-5">
+    <div class="card p-5 sm:p-7">
+      <div class="section-label mb-1">Currency exposure</div>
+      <div class="text-2xl mb-4" style="font-weight: 800;">INR vs EUR</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+        <div>
+          <div class="flex justify-between items-baseline mb-2">
+            <div class="flex items-center gap-2"><span class="dot" style="background: var(--green);"></span><span class="text-sm" style="font-weight: 700;">Indian Rupees</span><span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">INR</span></div>
+            <span id="ccyInrPct" class="num text-sm" style="font-weight: 700;"></span>
           </div>
+          <div class="hbar"><span id="ccyInrBar" style="background: var(--green);"></span></div>
+          <div id="ccyInrAmt" class="text-[11px] num mt-1.5" style="color: var(--text-muted); font-weight: 500;"></div>
+        </div>
+        <div>
+          <div class="flex justify-between items-baseline mb-2">
+            <div class="flex items-center gap-2"><span class="dot" style="background: var(--orange);"></span><span class="text-sm" style="font-weight: 700;">Euro</span><span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">EUR</span></div>
+            <span id="ccyEurPct" class="num text-sm" style="font-weight: 700;"></span>
+          </div>
+          <div class="hbar"><span id="ccyEurBar" style="background: var(--orange);"></span></div>
+          <div id="ccyEurAmt" class="text-[11px] num mt-1.5" style="color: var(--text-muted); font-weight: 500;"></div>
         </div>
       </div>
-      <div id="donutLegend" class="mt-4"></div>
-    </div>
-    <div class="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-5">
-      <div class="card p-5">
-        <div class="section-label mb-1">Currency exposure</div>
-        <div class="text-2xl mb-4" style="font-weight: 800;">INR vs EUR</div>
-        <div class="space-y-4">
-          <div>
-            <div class="flex justify-between items-baseline mb-2">
-              <div class="flex items-center gap-2"><span class="dot" style="background: var(--green);"></span><span class="text-sm" style="font-weight: 700;">Indian Rupees</span><span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">INR</span></div>
-              <span id="ccyInrPct" class="num text-sm" style="font-weight: 700;"></span>
-            </div>
-            <div class="hbar"><span id="ccyInrBar" style="background: var(--green);"></span></div>
-            <div id="ccyInrAmt" class="text-[11px] num mt-1.5" style="color: var(--text-muted); font-weight: 500;"></div>
-          </div>
-          <div>
-            <div class="flex justify-between items-baseline mb-2">
-              <div class="flex items-center gap-2"><span class="dot" style="background: var(--orange);"></span><span class="text-sm" style="font-weight: 700;">Euro</span><span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">EUR</span></div>
-              <span id="ccyEurPct" class="num text-sm" style="font-weight: 700;"></span>
-            </div>
-            <div class="hbar"><span id="ccyEurBar" style="background: var(--orange);"></span></div>
-            <div id="ccyEurAmt" class="text-[11px] num mt-1.5" style="color: var(--text-muted); font-weight: 500;"></div>
-          </div>
-        </div>
-        <div class="mt-5 pt-4 flex items-center justify-between text-[11px]" style="border-top: 1px solid var(--border);">
-          <span style="color: var(--text-muted); font-weight: 500;">EUR → INR rate</span>
-          <span id="ccyRate" class="num" style="font-weight: 700;"></span>
-        </div>
-      </div>
-      <div class="card p-5">
-        <div class="section-label mb-1">Per holder</div>
-        <div class="text-2xl mb-4" style="font-weight: 800;">Asset attribution</div>
-        <div id="holderList" class="space-y-3.5"></div>
+      <div class="mt-5 pt-4 flex items-center justify-between text-[11px]" style="border-top: 1px solid var(--border);">
+        <span style="color: var(--text-muted); font-weight: 500;">EUR → INR rate</span>
+        <span id="ccyRate" class="num" style="font-weight: 700;"></span>
       </div>
     </div>
   </section>
@@ -609,32 +588,10 @@ updateHeroNumber();
     return DATA.trend.filter(d => parseISODate(d.date) >= cutoff);
   }
 
-  // Fills in a null-valued point for every calendar month between two
-  // known data points, so Chart.js (spanGaps defaults to false) draws a
-  // visible break instead of a straight line across months we have no
-  // real data for. Spacing on the x-axis then reflects real elapsed time.
-  function expandWithGaps(rows) {
-    if (rows.length < 2) return rows;
-    const out = [];
-    for (let i = 0; i < rows.length; i++) {
-      out.push(rows[i]);
-      if (i === rows.length - 1) break;
-      let cur = parseISODate(rows[i].date);
-      const next = parseISODate(rows[i + 1].date);
-      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-      while (cur < new Date(next.getFullYear(), next.getMonth(), 1)) {
-        out.push({ date: cur.getFullYear() + '-' + String(cur.getMonth() + 1).padStart(2, '0') + '-01', total: null });
-        cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-      }
-    }
-    return out;
-  }
-
   function trendRender(range) {
     const rows = trendFilter(range);
-    const displayRows = expandWithGaps(rows);
-    trendChart.data.labels = displayRows.map(d => monthLabel(d.date));
-    trendChart.data.datasets[0].data = displayRows.map(d => d.total);
+    trendChart.data.labels = rows.map(d => monthLabel(d.date));
+    trendChart.data.datasets[0].data = rows.map(d => d.total);
     trendChart.update();
 
     // Keep the hero "change" pill in sync with whatever range is showing
@@ -664,26 +621,6 @@ updateHeroNumber();
   trendRender(6); // default: 6M, matching the active button
 }
 
-// ── Donut chart ──────────────────────────────────────────────
-{
-  const positive = DATA.allocation.filter(a => a.value > 0);
-  document.getElementById('donutCenter').textContent = positive.length;
-  new Chart(document.getElementById('donut'), {
-    type: 'doughnut',
-    data: { labels: positive.map(a => a.label), datasets: [{ data: positive.map(a => a.value), backgroundColor: positive.map(a => a.color), borderColor: '#ffffff', borderWidth: 4, hoverOffset: 8 }] },
-    options: { responsive: false, cutout: '74%',
-      plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1a1d1f', borderWidth: 0, padding: { x: 12, y: 8 }, cornerRadius: 10, titleColor: '#ffffff', bodyColor: '#ffffff', callbacks: { label: c => '  ' + c.label + ' · ' + fmtINR(c.parsed) } } }
-    }
-  });
-  const sum = positive.reduce((s,a) => s + a.value, 0);
-  document.getElementById('donutLegend').innerHTML = positive.sort((a,b) => b.value - a.value).map(a => `
-    <div class="alloc-item">
-      <span class="dot" style="background: ${a.color};"></span>
-      <span class="text-sm" style="font-weight: 600;">${a.label}</span>
-      <span class="num text-sm" style="color: var(--text-dim); font-weight: 700;">${(a.value/sum*100).toFixed(1)}%</span>
-    </div>`).join('');
-}
-
 // ── Currency split ───────────────────────────────────────────
 {
   const c = DATA.currencySplit;
@@ -697,26 +634,6 @@ updateHeroNumber();
   document.getElementById('ccyInrAmt').textContent = fmtINR(c.inr);
   document.getElementById('ccyEurAmt').textContent = '€' + Math.round(c.eur / (DATA.eurRate || 112)).toLocaleString('de-DE') + ' · ' + fmtINR(c.eur);
   document.getElementById('ccyRate').textContent = '₹' + (DATA.eurRate || 0).toFixed(2);
-}
-
-// ── Per holder ───────────────────────────────────────────────
-{
-  const p = DATA.perHolder;
-  const items = [
-    { label: 'Hiral',       value: p.hiral,   color: '#22c55e' },
-    { label: 'Divyang',     value: p.divyang, color: '#15803d' },
-    { label: 'Family pool', value: p.family,  color: '#f97316' },
-    { label: 'Debt',        value: p.debt,    color: '#ef4444', neg: true }
-  ];
-  const max = Math.max(...items.map(i => Math.abs(i.value)), 1);
-  document.getElementById('holderList').innerHTML = items.map(i => `
-    <div>
-      <div class="flex justify-between items-baseline mb-1.5">
-        <span class="text-sm" style="font-weight: 700; ${i.neg ? 'color: var(--red-deep);' : ''}">${i.label}</span>
-        <span class="num text-sm" style="font-weight: 700; ${i.neg ? 'color: var(--red-deep);' : ''}">${i.neg && i.value < 0 ? '−' : ''}${fmtINR(Math.abs(i.value))}</span>
-      </div>
-      <div class="hbar"><span style="width: ${(Math.abs(i.value)/max*100).toFixed(1)}%; background: ${i.color};"></span></div>
-    </div>`).join('');
 }
 
 // ── Cash flow chart ──────────────────────────────────────────

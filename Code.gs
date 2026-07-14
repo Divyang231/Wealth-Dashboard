@@ -181,9 +181,7 @@ function buildDashboardData() {
     eurRate:       latestEurRate(accounts),
     summary:       summary(accounts),
     trend:         trend(history),
-    allocation:    allocation(accounts),
     currencySplit: currencySplit(accounts),
-    perHolder:     perHolder(accounts),
     cashflow:      cashflow(txns),
     income:        incomeBreakdown(txns),
     expense:       expenseBreakdown(txns),
@@ -323,66 +321,26 @@ function trend(history) {
 }
 
 // ============================================================
-// ALLOCATION
-// ============================================================
-function allocation(accounts) {
-  const colorMap = {
-    'Liquid':         '#e8714a',
-    'Stocks & MF':    PALETTE.greenDeep,
-    'Fixed Deposit':  '#3b82f6',
-    'Gold':           PALETTE.gold,
-    'Real Estate':    PALETTE.slate,
-    'Falcon':         PALETTE.slateLight,
-    'Debt':           PALETTE.red
-  };
-  const sums = {};
-  accounts.forEach(a => {
-    const lbl = String(a.Label || '').trim();
-    if (!lbl) return;
-    const incl = includeInNetWorth(a);
-    if (!incl && lbl !== 'Real Estate') return;
-    sums[lbl] = (sums[lbl] || 0) + num(a['INR Gross Balance']);
-  });
-  return Object.keys(sums).map(label => ({
-    label,
-    value: Math.round(sums[label]),
-    color: colorMap[label] || PALETTE.slate
-  }));
-}
-
-// ============================================================
 // CURRENCY SPLIT
+// Mirrors summary()'s filtering exactly: skip blank Label, skip rows
+// excluded from net worth (col G = FALSE) except Real Estate — so the
+// INR/EUR split always adds up to the same total as the hero net worth
+// figure, and never double-counts transfer-tracking-only accounts
+// (e.g. individual demat rows already rolled into the family total).
 // ============================================================
 function currencySplit(accounts) {
   let inr = 0, eur = 0;
   accounts.forEach(a => {
+    const lbl  = String(a.Label || '').trim();
+    if (!lbl) return;
+    const incl = includeInNetWorth(a);
+    if (!incl && lbl !== 'Real Estate') return;
+
     const v = num(a['INR Gross Balance']);
     if (isEur(a.Currency)) eur += v;
     else inr += v;
   });
   return { inr: Math.round(inr), eur: Math.round(eur) };
-}
-
-// ============================================================
-// PER HOLDER
-// ============================================================
-function perHolder(accounts) {
-  let hiral = 0, divyang = 0, family = 0, debt = 0;
-  accounts.forEach(a => {
-    const v   = num(a['INR Gross Balance']);
-    const lbl = String(a.Label || '').trim();
-    const name = String(a.Account || '').toLowerCase();
-    if (lbl === 'Debt') debt += v;
-    else if (name.indexOf('hiral') >= 0) hiral += v;
-    else if (name.indexOf('divyang') >= 0) divyang += v;
-    else family += v;
-  });
-  return {
-    hiral:   Math.round(hiral),
-    divyang: Math.round(divyang),
-    family:  Math.round(family),
-    debt:    Math.round(debt)
-  };
 }
 
 // ============================================================
@@ -546,23 +504,23 @@ function runGeminiAdvisor() {
   try {
     const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
     if (!apiKey) return JSON.stringify({ error: 'GEMINI_API_KEY not set in Script Properties' });
-
+ 
     const ss       = SpreadsheetApp.getActiveSpreadsheet();
     const accounts = readSheet(ss, SHEETS.ACCOUNTS);
     const txns     = readSheet(ss, SHEETS.TXNS);
     fillCategory(accounts);
-
+ 
     const s   = summary(accounts);
     const nw  = s.total || 1;
     const cf  = cashflow(txns);
     const ccy = currencySplit(accounts);
     const sd  = readStocksDetail(ss, accounts);
     const ft  = sd ? (sd.familyTotal || {}) : {};
-
+ 
     var avgInc = cf.length ? cf.reduce(function(a,d){return a+d.inc;},0)/cf.length : 0;
     var avgExp = cf.length ? cf.reduce(function(a,d){return a+d.exp;},0)/cf.length : 0;
     var savingsRate = avgInc ? ((avgInc-avgExp)/avgInc*100).toFixed(1) : 0;
-
+ 
     function pct(v){ return (v/nw*100).toFixed(1); }
     function inr(v){
       var abs = Math.abs(v), sign = v < 0 ? '-' : '';
@@ -570,7 +528,7 @@ function runGeminiAdvisor() {
       if(abs>=100000)   return sign+'Rs '+(abs/100000).toFixed(2)+' L';
       return sign+'Rs '+Math.round(abs).toLocaleString();
     }
-
+ 
     var topSectors = sd ? (sd.sectors||[]).slice(0,3).map(function(x){return x.label+' ('+x.pct.toFixed(1)+'%)';}).join(', ') : 'N/A';
     var top2Pct    = sd ? (sd.sectors||[]).slice(0,2).reduce(function(a,x){return a+x.pct;},0).toFixed(1) : 0;
     var smallCap   = sd ? (sd.capSplit||[]).filter(function(c){return c.label==='Small Cap';})[0] : null;
@@ -578,7 +536,7 @@ function runGeminiAdvisor() {
     var accts      = sd ? (sd.accounts||[]) : [];
     var worstAcct  = accts.length ? accts.slice().sort(function(a,b){return a.plPct-b.plPct;})[0] : null;
     var bestAcct   = accts.length ? accts.slice().sort(function(a,b){return b.plPct-a.plPct;})[0] : null;
-
+ 
     var prompt = 'You are a sharp, experienced CA (Chartered Accountant) advising an Indian family. Be direct and specific with numbers — like a trusted advisor who respects the client. Identify problems clearly but frame actions constructively. No flattery, no harsh language, no drama. Just clear diagnosis and actionable steps.\n\n';
     prompt += 'WEALTH SNAPSHOT:\n';
     prompt += 'Net Worth: ' + inr(nw) + '\n';
@@ -599,35 +557,48 @@ function runGeminiAdvisor() {
     prompt += 'Generate exactly 6 insight cards. Keep each field under 20 words. Return ONLY valid JSON with no markdown, no backticks, no extra text:\n';
     prompt += 'Return ONLY valid JSON with no markdown, no backticks, no extra text:\n';
     prompt += '{"score":65,"verdict":"one blunt line","cards":[{"category":"LIQUIDITY","title":"short title","severity":"critical","observation":"blunt 1-2 sentences with numbers","impact":"what this costs them","action":"specific action with amount and timeline"},{"category":"ALLOCATION","title":"...","severity":"warning","observation":"...","impact":"...","action":"..."},{"category":"PORTFOLIO","title":"...","severity":"warning","observation":"...","impact":"...","action":"..."},{"category":"SECTORS","title":"...","severity":"advisory","observation":"...","impact":"...","action":"..."},{"category":"CASH FLOW","title":"...","severity":"healthy","observation":"...","impact":"...","action":"..."},{"category":"CURRENCY","title":"...","severity":"advisory","observation":"...","impact":"...","action":"..."}]}';
-
+ 
     Logger.log('Prompt length: ' + prompt.length);
-
+ 
     var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey;
-    var payload = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 4000 } };
+    var payload = {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 4000,
+        thinkingConfig: { thinkingBudget: 0 }  // disable thinking — frees full token budget for visible JSON output
+      }
+    };
     var options = { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true };
-
+ 
     var response = UrlFetchApp.fetch(url, options);
     Logger.log('HTTP status: ' + response.getResponseCode());
     var raw  = response.getContentText();
     Logger.log('Raw (first 600): ' + raw.substring(0, 600));
     var data = JSON.parse(raw);
     if (data.error) return JSON.stringify({ error: data.error.message });
-
+ 
+    var finishReason = (data.candidates && data.candidates[0] && data.candidates[0].finishReason) || 'unknown';
+    Logger.log('Finish reason: ' + finishReason);
+ 
     var text = '';
     if (data.candidates && data.candidates[0] && data.candidates[0].content &&
         data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
       text = data.candidates[0].content.parts[0].text || '';
     }
-    Logger.log('Extracted text (first 400): ' + text.substring(0, 400));
+    Logger.log('Extracted text length: ' + text.length + ' | first 400: ' + text.substring(0, 400));
+    if (finishReason === 'MAX_TOKENS' && text.indexOf('"cards"') === -1) {
+      Logger.log('WARNING: response truncated before cards array — consider raising maxOutputTokens further.');
+    }
     text = text.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'').trim();
     return text;
-
+ 
   } catch(e) {
     Logger.log('runGeminiAdvisor error: ' + e.toString());
     return JSON.stringify({ error: e.toString() });
   }
 }
-
+ 
 function testGeminiAdvisor() {
   var result = runGeminiAdvisor();
   Logger.log('Result (first 500): ' + result.substring(0, 500));
