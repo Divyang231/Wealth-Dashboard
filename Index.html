@@ -334,13 +334,20 @@
   ════════════════════════════════════════════════════════ -->
   <section class="reveal reveal-4 mb-5">
     <div class="card p-5 sm:p-7">
-      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div><div class="section-label">Overseas transfers</div><div class="text-2xl mt-0.5" style="font-weight: 800;">Remittances · EUR → INR</div></div>
-        <div class="flex items-center gap-1 p-1 rounded-full" style="background: var(--card-inner);">
+        <div id="remitRangeButtons" class="flex items-center gap-1 p-1 rounded-full" style="background: var(--card-inner);">
           <button class="tab-btn" onclick="setRemitRange(6, this)">6M</button>
           <button class="tab-btn active" onclick="setRemitRange(12, this)">1Y</button>
           <button class="tab-btn" onclick="setRemitRange('all', this)">All</button>
         </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 mb-5">
+        <span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">Custom range:</span>
+        <input type="date" id="remitFromDate" class="text-[12px] px-2.5 py-1.5 rounded-lg num" style="border: 1px solid var(--border-strong); background: var(--card-inner); font-weight: 600; color: var(--text);">
+        <span class="text-[11px]" style="color: var(--text-muted);">to</span>
+        <input type="date" id="remitToDate" class="text-[12px] px-2.5 py-1.5 rounded-lg num" style="border: 1px solid var(--border-strong); background: var(--card-inner); font-weight: 600; color: var(--text);">
+        <button onclick="remitApplyCustomRange()" class="text-[12px] px-4 py-1.5 rounded-full" style="background: var(--dark); color: #fff; font-weight: 700;">Apply</button>
       </div>
       <div class="chart-wrap chart-wrap-sm"><canvas id="remitChart"></canvas></div>
       <div class="grid grid-cols-3 gap-3 mt-5">
@@ -350,7 +357,7 @@
       </div>
       <div class="mt-5 pt-4" style="border-top: 1px solid var(--border);">
         <div class="flex items-baseline justify-between mb-1">
-          <div class="section-label">Recent remittances</div>
+          <div class="section-label">Remittances in range</div>
           <div id="remitMeta" class="text-[11px]" style="color: var(--text-muted); font-weight: 500;"></div>
         </div>
         <div id="remitList"></div>
@@ -688,73 +695,162 @@ updateHeroNumber();
 
 // ── Remittances ──────────────────────────────────────────────
 {
-  const RD = DATA.remittance || { summary: {}, monthly: [], recent: [] };
+  const ENTRIES = (DATA.remittance && DATA.remittance.entries) || []; // full history, most recent first
   const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const remitMonthLabel = s => {
     const dt = parseISODate(s);
     return MONTH_ABBR[dt.getMonth()] + " '" + String(dt.getFullYear()).slice(-2);
   };
+  const isoDate = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
   const remitChart = new Chart(document.getElementById('remitChart'), {
-    type: 'bar',
-    data: { labels: [], datasets: [{
-      data: [], backgroundColor: '#3b82f6', borderRadius: 6, barPercentage: 0.6, categoryPercentage: 0.6
-    }] },
+    data: {
+      labels: [],
+      datasets: [
+        {
+          type: 'bar', label: 'INR received', data: [],
+          backgroundColor: '#3b82f6', borderRadius: 6, barPercentage: 0.6, categoryPercentage: 0.6,
+          yAxisID: 'y', order: 2
+        },
+        {
+          type: 'line', label: 'Avg € rate', data: [],
+          borderColor: '#f97316', backgroundColor: 'transparent', borderWidth: 2,
+          pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: '#f97316',
+          pointBorderColor: '#fff', pointBorderWidth: 1, tension: 0.3,
+          yAxisID: 'y1', order: 1
+        }
+      ]
+    },
     options: {
       responsive: true, maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
       plugins: {
         legend: { display: false },
-        tooltip: { backgroundColor: '#1a1d1f', borderWidth: 0, padding: { x: 12, y: 8 }, cornerRadius: 10, titleColor: '#ffffff', bodyColor: '#ffffff', callbacks: { label: c => '  ' + fmtINR(c.parsed.y) } }
+        tooltip: {
+          backgroundColor: '#1a1d1f', borderWidth: 0, padding: { x: 12, y: 8 }, cornerRadius: 10,
+          titleColor: '#ffffff', bodyColor: '#ffffff',
+          callbacks: {
+            label: c => c.dataset.yAxisID === 'y1'
+              ? '  Avg rate: ₹' + c.parsed.y.toFixed(2) + '/€'
+              : '  ' + fmtINR(c.parsed.y)
+          }
+        }
       },
       scales: {
-        x: { grid: { display: false }, border: { display: false } },
-        y: { grid: { color: '#e8ece6' }, border: { display: false }, ticks: { callback: v => fmtINR(v) } }
+        x:  { grid: { display: false }, border: { display: false } },
+        y:  { grid: { color: '#e8ece6' }, border: { display: false }, ticks: { callback: v => fmtINR(v) } },
+        y1: { position: 'right', grid: { display: false }, border: { display: false }, ticks: { callback: v => '₹' + v.toFixed(1) } }
       }
     }
   });
 
-  function remitFilter(range) {
-    if (range === 'all') return RD.monthly;
-    const cutoff = new Date();
-    cutoff.setMonth(cutoff.getMonth() - Number(range));
-    return RD.monthly.filter(d => parseISODate(d.date) >= cutoff);
+  // Buckets already-date-filtered entries into monthly totals + a
+  // weighted average rate per month (sum INR ÷ sum EUR — same method
+  // used for the all-time avg, not a naive average of individual rates).
+  function bucketByMonth(list) {
+    const buckets = {};
+    list.forEach(e => {
+      const key = e.date.slice(0, 7); // 'yyyy-MM'
+      if (!buckets[key]) buckets[key] = { inr: 0, eur: 0 };
+      buckets[key].inr += e.inr;
+      buckets[key].eur += e.eur;
+    });
+    return Object.keys(buckets).sort().map(k => ({
+      date: k + '-01',
+      inr:  buckets[k].inr,
+      rate: buckets[k].eur ? buckets[k].inr / buckets[k].eur : 0
+    }));
   }
 
-  function remitRender(range) {
-    const rows = remitFilter(range);
+  // Single render path for BOTH the preset buttons and the custom date
+  // range — chart, the three summary tiles, and the list all recompute
+  // from whatever's inside [fromDate, toDate], so nothing goes stale.
+  function renderRange(fromDate, toDate, metaLabel) {
+    const filtered = ENTRIES.filter(e => {
+      const d = parseISODate(e.date);
+      return d >= fromDate && d <= toDate;
+    });
+
+    const rows = bucketByMonth(filtered);
     remitChart.data.labels = rows.map(d => remitMonthLabel(d.date));
     remitChart.data.datasets[0].data = rows.map(d => d.inr);
+    remitChart.data.datasets[1].data = rows.map(d => Math.round(d.rate * 100) / 100);
     remitChart.update();
+
+    const totalInr = filtered.reduce((s, e) => s + e.inr, 0);
+    const totalEur = filtered.reduce((s, e) => s + e.eur, 0);
+    const avgRate  = totalEur ? totalInr / totalEur : 0;
+
+    document.getElementById('remitTotalInr').textContent = fmtINR(Math.round(totalInr));
+    document.getElementById('remitTotalEur').textContent = '€' + Math.round(totalEur).toLocaleString('de-DE');
+    document.getElementById('remitAvgRate').textContent  = totalEur ? '₹' + avgRate.toFixed(2) : '—';
+    document.getElementById('remitMeta').textContent      = filtered.length + ' transfers · ' + metaLabel;
+
+    document.getElementById('remitList').innerHTML = filtered.length ? filtered.map(r => {
+      const dayLabel = parseISODate(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      return `
+        <div class="flex items-center justify-between py-3" style="border-top: 1px solid var(--border);">
+          <div class="min-w-0 pr-3">
+            <div class="text-sm truncate" style="font-weight: 600;">${r.from} → ${r.to}</div>
+            <div class="text-[11px] mt-0.5" style="color: var(--text-muted); font-weight: 500;">${dayLabel} · ₹${r.rate.toFixed(2)}/€</div>
+          </div>
+          <div class="text-right shrink-0">
+            <div class="num text-sm" style="font-weight: 700;">${fmtINR(r.inr)}</div>
+            <div class="num text-[11px]" style="color: var(--text-muted); font-weight: 500;">€${r.eur.toLocaleString('de-DE')}</div>
+          </div>
+        </div>`;
+    }).join('') : '<div class="text-sm" style="color: var(--text-muted);">No remittances in this range.</div>';
+  }
+
+  function syncDateInputs(fromDate, toDate) {
+    document.getElementById('remitFromDate').value = isoDate(fromDate);
+    document.getElementById('remitToDate').value   = isoDate(toDate);
+  }
+
+  // Bound the date pickers to the actual data range so an out-of-range
+  // pick isn't possible.
+  if (ENTRIES.length) {
+    const earliest = isoDate(parseISODate(ENTRIES[ENTRIES.length - 1].date));
+    const latest   = isoDate(new Date());
+    document.getElementById('remitFromDate').min = earliest;
+    document.getElementById('remitFromDate').max = latest;
+    document.getElementById('remitToDate').min   = earliest;
+    document.getElementById('remitToDate').max   = latest;
   }
 
   window.setRemitRange = function(range, btn) {
     btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    remitRender(range);
+
+    const to = new Date();
+    let from;
+    if (range === 'all') {
+      from = ENTRIES.length ? parseISODate(ENTRIES[ENTRIES.length - 1].date) : to;
+    } else {
+      from = new Date();
+      from.setMonth(from.getMonth() - Number(range));
+    }
+    syncDateInputs(from, to);
+    renderRange(from, to, range === 'all' ? 'all time' : range + 'M');
   };
 
-  remitRender(12); // default: 1Y, matching the active button
+  window.remitApplyCustomRange = function() {
+    const fromVal = document.getElementById('remitFromDate').value;
+    const toVal   = document.getElementById('remitToDate').value;
+    if (!fromVal || !toVal) return;
+    // Custom range doesn't correspond to any preset, so clear their active state.
+    document.querySelectorAll('#remitRangeButtons .tab-btn').forEach(b => b.classList.remove('active'));
+    renderRange(parseISODate(fromVal), parseISODate(toVal), 'custom range');
+  };
 
-  const s = RD.summary || {};
-  document.getElementById('remitTotalInr').textContent = fmtINR(s.totalInr || 0);
-  document.getElementById('remitTotalEur').textContent = '€' + (s.totalEur || 0).toLocaleString('de-DE');
-  document.getElementById('remitAvgRate').textContent  = '₹' + (s.avgRate || 0).toFixed(2);
-  document.getElementById('remitMeta').textContent      = (s.count || 0) + ' transfers · all time';
-
-  document.getElementById('remitList').innerHTML = (RD.recent || []).map(r => {
-    const dayLabel = parseISODate(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    return `
-      <div class="flex items-center justify-between py-3" style="border-top: 1px solid var(--border);">
-        <div class="min-w-0 pr-3">
-          <div class="text-sm truncate" style="font-weight: 600;">${r.from} → ${r.to}</div>
-          <div class="text-[11px] mt-0.5" style="color: var(--text-muted); font-weight: 500;">${dayLabel} · ₹${r.rate.toFixed(2)}/€</div>
-        </div>
-        <div class="text-right shrink-0">
-          <div class="num text-sm" style="font-weight: 700;">${fmtINR(r.inr)}</div>
-          <div class="num text-[11px]" style="color: var(--text-muted); font-weight: 500;">€${r.eur.toLocaleString('de-DE')}</div>
-        </div>
-      </div>`;
-  }).join('') || '<div class="text-sm" style="color: var(--text-muted);">No remittances found.</div>';
+  // Initial render: default 1Y, matching the active preset button
+  {
+    const to = new Date();
+    const from = new Date();
+    from.setMonth(from.getMonth() - 12);
+    syncDateInputs(from, to);
+    renderRange(from, to, '12M');
+  }
 }
 
 // ── Income / expense breakdown ───────────────────────────────
