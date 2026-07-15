@@ -329,6 +329,35 @@
     <div class="card p-5 sm:p-6"><div class="section-label mb-1">Expense categories</div><div class="text-2xl mb-5" style="font-weight: 800;">Last 12 months</div><div id="expenseList" class="space-y-4"></div></div>
   </section>
 
+  <!-- ═══════════════════════════════════════════════════════
+       REMITTANCES  —  EUR → INR transfers (Commerzbank/N26 → SBI)
+  ════════════════════════════════════════════════════════ -->
+  <section class="reveal reveal-4 mb-5">
+    <div class="card p-5 sm:p-7">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div><div class="section-label">Overseas transfers</div><div class="text-2xl mt-0.5" style="font-weight: 800;">Remittances · EUR → INR</div></div>
+        <div class="flex items-center gap-1 p-1 rounded-full" style="background: var(--card-inner);">
+          <button class="tab-btn" onclick="setRemitRange(6, this)">6M</button>
+          <button class="tab-btn active" onclick="setRemitRange(12, this)">1Y</button>
+          <button class="tab-btn" onclick="setRemitRange('all', this)">All</button>
+        </div>
+      </div>
+      <div class="chart-wrap chart-wrap-sm"><canvas id="remitChart"></canvas></div>
+      <div class="grid grid-cols-3 gap-3 mt-5">
+        <div class="card-inner p-3.5"><div class="section-label">Total received</div><div id="remitTotalInr" class="num text-lg mt-1" style="font-weight: 800;"></div></div>
+        <div class="card-inner p-3.5"><div class="section-label">Total remitted</div><div id="remitTotalEur" class="num text-lg mt-1" style="font-weight: 800;"></div></div>
+        <div class="card-inner p-3.5"><div class="section-label">Avg rate</div><div id="remitAvgRate" class="num text-lg mt-1" style="font-weight: 800;"></div></div>
+      </div>
+      <div class="mt-5 pt-4" style="border-top: 1px solid var(--border);">
+        <div class="flex items-baseline justify-between mb-1">
+          <div class="section-label">Recent remittances</div>
+          <div id="remitMeta" class="text-[11px]" style="color: var(--text-muted); font-weight: 500;"></div>
+        </div>
+        <div id="remitList"></div>
+      </div>
+    </div>
+  </section>
+
   <section class="reveal reveal-5 mb-5">
     <div class="card p-5 sm:p-7">
       <div class="section-label mb-1">All accounts</div>
@@ -655,6 +684,77 @@ updateHeroNumber();
   document.getElementById('kpiAvgInc').textContent = '€' + Math.round(avgInc).toLocaleString('de-DE');
   document.getElementById('kpiAvgExp').textContent = '€' + Math.round(avgExp).toLocaleString('de-DE');
   document.getElementById('kpiSavings').textContent = avgInc ? ((avgInc - avgExp) / avgInc * 100).toFixed(1) + '%' : '—';
+}
+
+// ── Remittances ──────────────────────────────────────────────
+{
+  const RD = DATA.remittance || { summary: {}, monthly: [], recent: [] };
+  const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const remitMonthLabel = s => {
+    const dt = parseISODate(s);
+    return MONTH_ABBR[dt.getMonth()] + " '" + String(dt.getFullYear()).slice(-2);
+  };
+
+  const remitChart = new Chart(document.getElementById('remitChart'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{
+      data: [], backgroundColor: '#3b82f6', borderRadius: 6, barPercentage: 0.6, categoryPercentage: 0.6
+    }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: '#1a1d1f', borderWidth: 0, padding: { x: 12, y: 8 }, cornerRadius: 10, titleColor: '#ffffff', bodyColor: '#ffffff', callbacks: { label: c => '  ' + fmtINR(c.parsed.y) } }
+      },
+      scales: {
+        x: { grid: { display: false }, border: { display: false } },
+        y: { grid: { color: '#e8ece6' }, border: { display: false }, ticks: { callback: v => fmtINR(v) } }
+      }
+    }
+  });
+
+  function remitFilter(range) {
+    if (range === 'all') return RD.monthly;
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - Number(range));
+    return RD.monthly.filter(d => parseISODate(d.date) >= cutoff);
+  }
+
+  function remitRender(range) {
+    const rows = remitFilter(range);
+    remitChart.data.labels = rows.map(d => remitMonthLabel(d.date));
+    remitChart.data.datasets[0].data = rows.map(d => d.inr);
+    remitChart.update();
+  }
+
+  window.setRemitRange = function(range, btn) {
+    btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    remitRender(range);
+  };
+
+  remitRender(12); // default: 1Y, matching the active button
+
+  const s = RD.summary || {};
+  document.getElementById('remitTotalInr').textContent = fmtINR(s.totalInr || 0);
+  document.getElementById('remitTotalEur').textContent = '€' + (s.totalEur || 0).toLocaleString('de-DE');
+  document.getElementById('remitAvgRate').textContent  = '₹' + (s.avgRate || 0).toFixed(2);
+  document.getElementById('remitMeta').textContent      = (s.count || 0) + ' transfers · all time';
+
+  document.getElementById('remitList').innerHTML = (RD.recent || []).map(r => {
+    const dayLabel = parseISODate(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `
+      <div class="flex items-center justify-between py-3" style="border-top: 1px solid var(--border);">
+        <div class="min-w-0 pr-3">
+          <div class="text-sm truncate" style="font-weight: 600;">${r.from} → ${r.to}</div>
+          <div class="text-[11px] mt-0.5" style="color: var(--text-muted); font-weight: 500;">${dayLabel} · ₹${r.rate.toFixed(2)}/€</div>
+        </div>
+        <div class="text-right shrink-0">
+          <div class="num text-sm" style="font-weight: 700;">${fmtINR(r.inr)}</div>
+          <div class="num text-[11px]" style="color: var(--text-muted); font-weight: 500;">€${r.eur.toLocaleString('de-DE')}</div>
+        </div>
+      </div>`;
+  }).join('') || '<div class="text-sm" style="color: var(--text-muted);">No remittances found.</div>';
 }
 
 // ── Income / expense breakdown ───────────────────────────────

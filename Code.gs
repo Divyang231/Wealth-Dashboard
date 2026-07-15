@@ -19,7 +19,8 @@ const SHEETS = {
   ACCOUNTS:  'Account',
   HISTORY:   'Account Monthly History',
   TXNS:      'Transactions',
-  STOCKS_MF: 'Stocks + MF Summary'
+  STOCKS_MF: 'Stocks + MF Summary',
+  REMIT:     'Remmitance View'
 };
 
 const TRACKER_SHEET_NAME = 'Tracker';
@@ -169,6 +170,7 @@ function buildDashboardData() {
   const accounts = readSheet(ss, SHEETS.ACCOUNTS);
   const history  = readSheet(ss, SHEETS.HISTORY);
   const txns     = readSheet(ss, SHEETS.TXNS);
+  const remits   = readSheet(ss, SHEETS.REMIT);
 
   const walletSs   = SpreadsheetApp.openById(WALLET_SPREADSHEET_ID);
   const walletTxns = readSheet(walletSs, WALLET_SHEETS.TXNS);
@@ -188,7 +190,8 @@ function buildDashboardData() {
     accounts:      accountGroups(accounts),
     recentTxns:    recentTxns(txns, 20),
     stocksDetail:  readStocksDetail(ss, accounts),
-    passiveIncome: passiveIncome(walletTxns)
+    passiveIncome: passiveIncome(walletTxns),
+    remittance:    remittance(remits)
   };
 }
 
@@ -494,6 +497,69 @@ function parseWalletDate(v) {
   if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
   const parsed = new Date(s);
   return isNaN(parsed) ? null : parsed;
+}
+
+// ============================================================
+// REMITTANCES ("Remmitance View" sheet)
+// Tracks EUR → INR transfers from the Commerzbank/N26 accounts into
+// the SBI accounts. The sheet's "Currency" column is inconsistently
+// labeled (INR/EUR/Eur/Euro all appear regardless of what was actually
+// sent), so it's ignored entirely. Instead the rate is always derived
+// as Credit INR ÷ Remmit Amount — this self-corrects the sheet's rate
+// column, which has occasional decimal-point-missing typos (e.g.
+// 89755 instead of 89.755); dividing INR by the EUR amount always
+// lands in the real 65–150 rate band without needing manual cleanup.
+// ============================================================
+function remittance(rows) {
+  const monthly = {}; // 'yyyy-MM' -> { inr, eur }
+  const recent  = [];
+  let totalInr = 0, totalEur = 0, count = 0;
+
+  rows.forEach(r => {
+    const d = r.Date;
+    if (!(d instanceof Date)) return;
+    const eurAmt = num(r['Remmit Amount']);
+    const inrAmt = num(r['Credit INR']);
+    if (!eurAmt || !inrAmt) return;
+    const rate = inrAmt / eurAmt;
+
+    totalInr += inrAmt;
+    totalEur += eurAmt;
+    count++;
+
+    const key = Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM');
+    if (!monthly[key]) monthly[key] = { inr: 0, eur: 0 };
+    monthly[key].inr += inrAmt;
+    monthly[key].eur += eurAmt;
+
+    recent.push({
+      date: Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+      from: String(r['From Account'] || '').trim(),
+      to:   String(r['To Account'] || '').trim(),
+      eur:  Math.round(eurAmt),
+      inr:  Math.round(inrAmt),
+      rate: Math.round(rate * 100) / 100
+    });
+  });
+
+  const monthlyArr = Object.keys(monthly).sort().map(k => ({
+    date: k + '-01',
+    inr:  Math.round(monthly[k].inr),
+    eur:  Math.round(monthly[k].eur)
+  }));
+
+  recent.sort((a, b) => b.date.localeCompare(a.date));
+
+  return {
+    summary: {
+      totalInr: Math.round(totalInr),
+      totalEur: Math.round(totalEur),
+      avgRate:  totalEur ? Math.round((totalInr / totalEur) * 100) / 100 : 0,
+      count:    count
+    },
+    monthly: monthlyArr,
+    recent:  recent.slice(0, 20)
+  };
 }
 
 // ============================================================
