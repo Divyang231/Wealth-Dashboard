@@ -512,7 +512,7 @@ function parseWalletDate(v) {
 // ============================================================
 function remittance(rows) {
   const monthly = {}; // 'yyyy-MM' -> { inr, eur }
-  const recent  = [];
+  const entries = [];
   let totalInr = 0, totalEur = 0, count = 0;
 
   rows.forEach(r => {
@@ -532,7 +532,7 @@ function remittance(rows) {
     monthly[key].inr += inrAmt;
     monthly[key].eur += eurAmt;
 
-    recent.push({
+    entries.push({
       date: Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
       from: String(r['From Account'] || '').trim(),
       to:   String(r['To Account'] || '').trim(),
@@ -545,10 +545,14 @@ function remittance(rows) {
   const monthlyArr = Object.keys(monthly).sort().map(k => ({
     date: k + '-01',
     inr:  Math.round(monthly[k].inr),
-    eur:  Math.round(monthly[k].eur)
+    eur:  Math.round(monthly[k].eur),
+    rate: monthly[k].eur ? Math.round((monthly[k].inr / monthly[k].eur) * 100) / 100 : 0
   }));
 
-  recent.sort((a, b) => b.date.localeCompare(a.date));
+  // Full history, most recent first — small dataset (dozens of rows,
+  // not thousands), so sending it all lets the client filter by any
+  // custom date range without another round trip to the sheet.
+  entries.sort((a, b) => b.date.localeCompare(a.date));
 
   return {
     summary: {
@@ -558,7 +562,7 @@ function remittance(rows) {
       count:    count
     },
     monthly: monthlyArr,
-    recent:  recent.slice(0, 20)
+    entries: entries
   };
 }
 
