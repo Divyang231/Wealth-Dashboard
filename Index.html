@@ -740,7 +740,7 @@ updateHeroNumber();
       scales: {
         x:  { grid: { display: false }, border: { display: false } },
         y:  { grid: { color: '#e8ece6' }, border: { display: false }, ticks: { callback: v => fmtINR(v) } },
-        y1: { position: 'right', grid: { display: false }, border: { display: false }, ticks: { callback: v => '₹' + v.toFixed(1) } }
+        y1: { position: 'right', min: 60, max: 120, grid: { display: false }, border: { display: false }, ticks: { callback: v => '₹' + v.toFixed(1) } }
       }
     }
   });
