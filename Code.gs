@@ -14,23 +14,19 @@
  * count toward the headline net worth figure. Set TRUE or FALSE per row.
  * The toggle in the UI can additionally exclude/include Real Estate on the fly.
  */
-
 const SHEETS = {
   ACCOUNTS:  'Account',
   HISTORY:   'Account Monthly History',
   TXNS:      'Transactions',
   STOCKS_MF: 'Stocks + MF Summary',
-  REMIT:     'Remmitance View'
+  REMIT:     'Remmitance View',
+  BUDGETS:   'Budgets'
 };
-
 const TRACKER_SHEET_NAME = 'Tracker';
-
 // Separate Wallet spreadsheet — internal transfer / income ledger.
 const WALLET_SPREADSHEET_ID = '1HI5qLyjBcQDZW-uLbqFsiF9emX5Sf-taAGz5l-zJqoE';
 const WALLET_SHEETS = { TXNS: 'Transactions' };
-
 const EUR_CCYS = ['EUR', 'Eur', 'Euro', 'EURO'];
-
 const PALETTE = {
   green:     '#22c55e',
   greenDeep: '#15803d',
@@ -45,7 +41,6 @@ const PALETTE = {
   slateLight:'#94a3b8',
   dark:      '#1a1d1f'
 };
-
 // ============================================================
 // ENTRY POINT
 // ============================================================
@@ -63,7 +58,6 @@ function doGet(e) {
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
-
 // ============================================================
 // MONTHLY SNAPSHOT — self-triggering, no Apps Script time trigger
 // involved (those silently stop firing after a few months with no
@@ -81,23 +75,19 @@ function doGet(e) {
 // the same rule used for today's live total is baked into every row.
 // ============================================================
 const SNAPSHOT_LAST_RUN_KEY = 'LAST_SNAPSHOT_RUN_DATE';
-
 function takeMonthlySnapshotIfNeeded() {
   try {
     const props = PropertiesService.getScriptProperties();
     const now = new Date();
     const todayKey = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd');
     if (props.getProperty(SNAPSHOT_LAST_RUN_KEY) === todayKey) return; // at most once/day
-
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const historySheet = ss.getSheetByName(SHEETS.HISTORY);
     if (!historySheet) return;
-
     const thisMonthKey = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM');
     const lastCol = historySheet.getLastColumn();
     const lastRow = historySheet.getLastRow();
     if (lastCol < 1) return;
-
     // Read actual header positions rather than assuming fixed column
     // order — resilient to columns being reordered or added later.
     const headers = historySheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
@@ -110,7 +100,6 @@ function takeMonthlySnapshotIfNeeded() {
       return;
     }
     const numCols = headers.length;
-
     // Keep every existing row EXCEPT ones already snapshotted for the
     // current calendar month — those get replaced with fresh numbers.
     let keptRows = [];
@@ -122,7 +111,6 @@ function takeMonthlySnapshotIfNeeded() {
         return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM') !== thisMonthKey;
       });
     }
-
     const accounts = readSheet(ss, SHEETS.ACCOUNTS);
     const freshRows = [];
     accounts.forEach(a => {
@@ -141,11 +129,9 @@ function takeMonthlySnapshotIfNeeded() {
       freshRows.push(row);
     });
     if (!freshRows.length) return;
-
     const allRows = keptRows.concat(freshRows);
     historySheet.getRange(2, 1, Math.max(historySheet.getMaxRows() - 1, allRows.length), numCols).clearContent();
     historySheet.getRange(2, 1, allRows.length, numCols).setValues(allRows);
-
     props.setProperty(SNAPSHOT_LAST_RUN_KEY, todayKey);
     Logger.log('Snapshot refreshed for ' + thisMonthKey + ': ' + freshRows.length + ' accounts (' + allRows.length + ' total history rows).');
   } catch (err) {
@@ -153,7 +139,6 @@ function takeMonthlySnapshotIfNeeded() {
     Logger.log('takeMonthlySnapshotIfNeeded error: ' + err.toString());
   }
 }
-
 // Callable manually from the Apps Script editor (select this function,
 // click Run) if you want to force a refresh without waiting for the
 // once-per-day check — e.g. right after updating Zerodha data.
@@ -161,7 +146,6 @@ function takeMonthlySnapshotNow() {
   PropertiesService.getScriptProperties().deleteProperty(SNAPSHOT_LAST_RUN_KEY);
   takeMonthlySnapshotIfNeeded();
 }
-
 // ============================================================
 // MAIN DATA BUILDER
 // ============================================================
@@ -171,13 +155,10 @@ function buildDashboardData() {
   const history  = readSheet(ss, SHEETS.HISTORY);
   const txns     = readSheet(ss, SHEETS.TXNS);
   const remits   = readSheet(ss, SHEETS.REMIT);
-
   const walletSs   = SpreadsheetApp.openById(WALLET_SPREADSHEET_ID);
   const walletTxns = readSheet(walletSs, WALLET_SHEETS.TXNS);
-
   fillCategory(accounts);
   fillCategory(history);
-
   return {
     asOf:          new Date().toISOString(),
     eurRate:       latestEurRate(accounts),
@@ -191,10 +172,10 @@ function buildDashboardData() {
     recentTxns:    recentTxns(txns, 20),
     stocksDetail:  readStocksDetail(ss, accounts),
     passiveIncome: passiveIncome(walletTxns),
-    remittance:    remittance(remits)
+    remittance:    remittance(remits),
+    budget:        budgetBreakdown(ss, accounts, txns, walletTxns)
   };
 }
-
 // ============================================================
 // SHEET READER
 // ============================================================
@@ -214,24 +195,20 @@ function readSheet(ss, name) {
   }
   return out;
 }
-
 // ============================================================
 // HELPERS
 // ============================================================
 function isEur(c) { return EUR_CCYS.indexOf(String(c || '').trim()) >= 0; }
 function num(v)   { const n = Number(v); return isNaN(n) ? 0 : n; }
-
 function includeInNetWorth(row) {
   // Reads column F "Include in Net Worth" — accepts TRUE (boolean) or 'TRUE' (string)
   const v = row['Include in Net Worth'];
   if (typeof v === 'boolean') return v;
   return String(v).trim().toUpperCase() === 'TRUE';
 }
-
 function isRealEstate(row) {
   return String(row.Label || '').trim() === 'Real Estate';
 }
-
 // Forward-fill Label and Category columns
 function fillCategory(rows) {
   let lastLabel = '', lastCat = '';
@@ -242,12 +219,10 @@ function fillCategory(rows) {
     else r.Category = lastCat;
   });
 }
-
 function latestEurRate(accounts) {
   const rates = accounts.map(a => num(a['Euro rate'])).filter(r => r > 0);
   return rates.length ? rates[rates.length - 1] : 112;
 }
-
 // ============================================================
 // HERO SUMMARY
 // Now driven by "Include in Net Worth" column (col F).
@@ -258,27 +233,21 @@ function summary(accounts) {
   let base = 0;
   let realEstate = 0;
   let liquid = 0, stocksMF = 0, gold = 0, disputed = 0, fixedDeposit = 0;
-
   accounts.forEach(a => {
     const v    = num(a['INR Gross Balance']);
     const lbl  = String(a.Label || '').trim();
     const incl = includeInNetWorth(a);  // col G must be TRUE
-
     // Skip rows where Label (col B) is blank — not counted anywhere
     if (!lbl) return;
-
     // Real Estate: accumulate separately for the UI toggle, only if col G = TRUE
     if (lbl === 'Real Estate') {
       if (incl) realEstate += v;
       return;
     }
-
     // Skip rows excluded from net worth (col G = FALSE)
     if (!incl) return;
-
     // Net worth base
     base += v;
-
     // Hero KPI buckets — driven directly by Label
     switch (lbl) {
       case 'Liquid':         liquid       += v; break;
@@ -288,7 +257,6 @@ function summary(accounts) {
       case 'Falcon':         disputed     += v; break;
     }
   });
-
   return {
     total:        Math.round(base + realEstate),
     base:         Math.round(base),
@@ -300,7 +268,6 @@ function summary(accounts) {
     disputed:     Math.round(disputed)
   };
 }
-
 // ============================================================
 // TREND
 // ============================================================
@@ -322,7 +289,6 @@ function trend(history) {
     total: Math.round(buckets[k])
   }));
 }
-
 // ============================================================
 // CURRENCY SPLIT
 // Mirrors summary()'s filtering exactly: skip blank Label, skip rows
@@ -338,14 +304,12 @@ function currencySplit(accounts) {
     if (!lbl) return;
     const incl = includeInNetWorth(a);
     if (!incl && lbl !== 'Real Estate') return;
-
     const v = num(a['INR Gross Balance']);
     if (isEur(a.Currency)) eur += v;
     else inr += v;
   });
   return { inr: Math.round(inr), eur: Math.round(eur) };
 }
-
 // ============================================================
 // CASH FLOW
 // ============================================================
@@ -372,7 +336,6 @@ function cashflow(txns) {
     };
   });
 }
-
 // ============================================================
 // INCOME / EXPENSE BREAKDOWN
 // ============================================================
@@ -380,12 +343,10 @@ function incomeBreakdown(txns) {
   return breakdown_(txns, 'income', 'Income',
     [PALETTE.green, '#16a34a', PALETTE.greenDeep, PALETTE.greenSoft, PALETTE.gold, PALETTE.cyan, PALETTE.slate]);
 }
-
 function expenseBreakdown(txns) {
   return breakdown_(txns, 'expense', 'Expense',
     ['#f97316', '#fb923c', '#ea580c', '#c2410c', '#9a3412', '#7c2d12', '#ef4444']);
 }
-
 function breakdown_(txns, typeWanted, amountCol, palette) {
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - 12);
@@ -404,7 +365,6 @@ function breakdown_(txns, typeWanted, amountCol, palette) {
     .sort((a, b) => b.amt - a.amt)
     .map((x, i) => Object.assign(x, { color: palette[i % palette.length] }));
 }
-
 // ============================================================
 // ACCOUNT GROUPS
 // ============================================================
@@ -443,7 +403,6 @@ function accountGroups(accounts) {
   order.forEach(k => { if (groups[k]) out[k] = groups[k]; });
   return out;
 }
-
 // ============================================================
 // RECENT TRANSACTIONS
 // ============================================================
@@ -461,7 +420,6 @@ function recentTxns(txns, limit) {
       note: String(t.Note || t['Txn_Category'] || '')
     }));
 }
-
 // ============================================================
 // PASSIVE INCOME (Wallet spreadsheet, Type = "Income")
 // Sends raw filtered entries to the client — the UI's range
@@ -486,7 +444,6 @@ function passiveIncome(walletTxns) {
   });
   return out;
 }
-
 // Parses Wallet sheet dates, which may arrive as real Date objects or as
 // 'dd/MM/yyyy' strings (seen in the Wallet "Transactions" tab).
 function parseWalletDate(v) {
@@ -498,7 +455,6 @@ function parseWalletDate(v) {
   const parsed = new Date(s);
   return isNaN(parsed) ? null : parsed;
 }
-
 // ============================================================
 // REMITTANCES ("Remmitance View" sheet)
 // Tracks EUR → INR transfers from the Commerzbank/N26 accounts into
@@ -514,7 +470,6 @@ function remittance(rows) {
   const monthly = {}; // 'yyyy-MM' -> { inr, eur }
   const entries = [];
   let totalInr = 0, totalEur = 0, count = 0;
-
   rows.forEach(r => {
     const d = r.Date;
     if (!(d instanceof Date)) return;
@@ -522,16 +477,13 @@ function remittance(rows) {
     const inrAmt = num(r['Credit INR']);
     if (!eurAmt || !inrAmt) return;
     const rate = inrAmt / eurAmt;
-
     totalInr += inrAmt;
     totalEur += eurAmt;
     count++;
-
     const key = Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM');
     if (!monthly[key]) monthly[key] = { inr: 0, eur: 0 };
     monthly[key].inr += inrAmt;
     monthly[key].eur += eurAmt;
-
     entries.push({
       date: Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
       from: String(r['From Account'] || '').trim(),
@@ -541,19 +493,16 @@ function remittance(rows) {
       rate: Math.round(rate * 100) / 100
     });
   });
-
   const monthlyArr = Object.keys(monthly).sort().map(k => ({
     date: k + '-01',
     inr:  Math.round(monthly[k].inr),
     eur:  Math.round(monthly[k].eur),
     rate: monthly[k].eur ? Math.round((monthly[k].inr / monthly[k].eur) * 100) / 100 : 0
   }));
-
   // Full history, most recent first — small dataset (dozens of rows,
   // not thousands), so sending it all lets the client filter by any
   // custom date range without another round trip to the sheet.
   entries.sort((a, b) => b.date.localeCompare(a.date));
-
   return {
     summary: {
       totalInr: Math.round(totalInr),
@@ -565,7 +514,96 @@ function remittance(rows) {
     entries: entries
   };
 }
+// ============================================================
+// BUDGETS (new "Budgets" tab)
+// Actuals = Type="Expense" rows matching a budget's exact Txn_Category,
+// summed from BOTH this sheet's Transactions AND the Wallet sheet's
+// Transactions, converted to INR via latestEurRate() where currency is
+// EUR (mirrors how the rest of the dashboard treats a single blended
+// rate rather than a per-transaction one).
+//
+// Monthly budgets compare against calendar-month-to-date; Yearly
+// budgets compare against calendar-year-to-date (Jan 1 -> today).
+// Categories with expense activity but no matching Active budget row
+// roll into "unbudgeted" (scoped to the current month only, so it
+// never mixes a month window with a year window).
+//
+// Budgets tab columns: Category | Period (Monthly/Yearly) | Budget
+// Amount | Currency | Active. Set Active to FALSE to retire a line
+// without deleting it.
+// ============================================================
+function isActive(row) {
+  const v = row.Active;
+  if (typeof v === 'boolean') return v;
+  return String(v).trim().toUpperCase() === 'TRUE';
+}
+function budgetBreakdown(ss, accounts, txns, walletTxns) {
+  const budgetRows = readSheet(ss, SHEETS.BUDGETS);
+  const rate = latestEurRate(accounts);
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const yearStart  = new Date(now.getFullYear(), 0, 1);
 
+  function collect(rows, dateFn) {
+    const out = [];
+    rows.forEach(t => {
+      if (String(t.Type || '').trim().toLowerCase() !== 'expense') return;
+      const d = dateFn(t.Date);
+      if (!d) return;
+      const amt = num(t.Expense) || num(t.Amount);
+      if (!amt) return;
+      const inr = isEur(t.Currency) ? amt * rate : amt;
+      out.push({ cat: String(t['Txn_Category'] || '').trim() || 'Uncategorized', date: d, inr: inr });
+    });
+    return out;
+  }
+  const expenses = collect(txns, d => (d instanceof Date ? d : null))
+    .concat(collect(walletTxns, parseWalletDate));
+
+  const budgets = budgetRows
+    .filter(isActive)
+    .map(b => {
+      const isYearly = String(b['Period (Monthly/Yearly)'] || '').trim().toLowerCase().indexOf('year') === 0;
+      const isEurBudget = String(b.Currency || '').trim().toUpperCase() === 'EUR';
+      const rawAmt = num(b['Budget Amount']);
+      return {
+        category: String(b.Category || '').trim(),
+        period: isYearly ? 'Yearly' : 'Monthly',
+        budgeted: Math.round(isEurBudget ? rawAmt * rate : rawAmt)
+      };
+    })
+    .filter(b => b.category);
+
+  const budgetedCats = new Set(budgets.map(b => b.category));
+
+  const rows = budgets.map(b => {
+    const windowStart = b.period === 'Yearly' ? yearStart : monthStart;
+    const actual = expenses
+      .filter(e => e.cat === b.category && e.date >= windowStart && e.date <= now)
+      .reduce((s, e) => s + e.inr, 0);
+    const pct = b.budgeted > 0 ? Math.round((actual / b.budgeted) * 100) : 0;
+    return {
+      category: b.category,
+      period:   b.period,
+      budgeted: b.budgeted,
+      actual:   Math.round(actual),
+      pct:      pct,
+      status:   pct >= 100 ? 'over' : (pct >= 80 ? 'near' : 'ok')
+    };
+  }).sort((a, b) => b.pct - a.pct);
+
+  const unbudgeted = Math.round(
+    expenses
+      .filter(e => !budgetedCats.has(e.cat) && e.date >= monthStart && e.date <= now)
+      .reduce((s, e) => s + e.inr, 0)
+  );
+
+  return {
+    monthly: rows.filter(r => r.period === 'Monthly'),
+    yearly:  rows.filter(r => r.period === 'Yearly'),
+    unbudgeted: unbudgeted
+  };
+}
 // ============================================================
 // AI ADVISOR — builds prompt from live sheet data + calls Gemini
 // Called from Index.html via google.script.run
@@ -574,23 +612,23 @@ function runGeminiAdvisor() {
   try {
     const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
     if (!apiKey) return JSON.stringify({ error: 'GEMINI_API_KEY not set in Script Properties' });
- 
+
     const ss       = SpreadsheetApp.getActiveSpreadsheet();
     const accounts = readSheet(ss, SHEETS.ACCOUNTS);
     const txns     = readSheet(ss, SHEETS.TXNS);
     fillCategory(accounts);
- 
+
     const s   = summary(accounts);
     const nw  = s.total || 1;
     const cf  = cashflow(txns);
     const ccy = currencySplit(accounts);
     const sd  = readStocksDetail(ss, accounts);
     const ft  = sd ? (sd.familyTotal || {}) : {};
- 
+
     var avgInc = cf.length ? cf.reduce(function(a,d){return a+d.inc;},0)/cf.length : 0;
     var avgExp = cf.length ? cf.reduce(function(a,d){return a+d.exp;},0)/cf.length : 0;
     var savingsRate = avgInc ? ((avgInc-avgExp)/avgInc*100).toFixed(1) : 0;
- 
+
     function pct(v){ return (v/nw*100).toFixed(1); }
     function inr(v){
       var abs = Math.abs(v), sign = v < 0 ? '-' : '';
@@ -598,7 +636,7 @@ function runGeminiAdvisor() {
       if(abs>=100000)   return sign+'Rs '+(abs/100000).toFixed(2)+' L';
       return sign+'Rs '+Math.round(abs).toLocaleString();
     }
- 
+
     var topSectors = sd ? (sd.sectors||[]).slice(0,3).map(function(x){return x.label+' ('+x.pct.toFixed(1)+'%)';}).join(', ') : 'N/A';
     var top2Pct    = sd ? (sd.sectors||[]).slice(0,2).reduce(function(a,x){return a+x.pct;},0).toFixed(1) : 0;
     var smallCap   = sd ? (sd.capSplit||[]).filter(function(c){return c.label==='Small Cap';})[0] : null;
@@ -606,7 +644,7 @@ function runGeminiAdvisor() {
     var accts      = sd ? (sd.accounts||[]) : [];
     var worstAcct  = accts.length ? accts.slice().sort(function(a,b){return a.plPct-b.plPct;})[0] : null;
     var bestAcct   = accts.length ? accts.slice().sort(function(a,b){return b.plPct-a.plPct;})[0] : null;
- 
+
     var prompt = 'You are a sharp, experienced CA (Chartered Accountant) advising an Indian family. Be direct and specific with numbers — like a trusted advisor who respects the client. Identify problems clearly but frame actions constructively. No flattery, no harsh language, no drama. Just clear diagnosis and actionable steps.\n\n';
     prompt += 'WEALTH SNAPSHOT:\n';
     prompt += 'Net Worth: ' + inr(nw) + '\n';
@@ -627,9 +665,9 @@ function runGeminiAdvisor() {
     prompt += 'Generate exactly 6 insight cards. Keep each field under 20 words. Return ONLY valid JSON with no markdown, no backticks, no extra text:\n';
     prompt += 'Return ONLY valid JSON with no markdown, no backticks, no extra text:\n';
     prompt += '{"score":65,"verdict":"one blunt line","cards":[{"category":"LIQUIDITY","title":"short title","severity":"critical","observation":"blunt 1-2 sentences with numbers","impact":"what this costs them","action":"specific action with amount and timeline"},{"category":"ALLOCATION","title":"...","severity":"warning","observation":"...","impact":"...","action":"..."},{"category":"PORTFOLIO","title":"...","severity":"warning","observation":"...","impact":"...","action":"..."},{"category":"SECTORS","title":"...","severity":"advisory","observation":"...","impact":"...","action":"..."},{"category":"CASH FLOW","title":"...","severity":"healthy","observation":"...","impact":"...","action":"..."},{"category":"CURRENCY","title":"...","severity":"advisory","observation":"...","impact":"...","action":"..."}]}';
- 
+
     Logger.log('Prompt length: ' + prompt.length);
- 
+
     var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey;
     var payload = {
       contents: [{ parts: [{ text: prompt }] }],
@@ -640,17 +678,17 @@ function runGeminiAdvisor() {
       }
     };
     var options = { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true };
- 
+
     var response = UrlFetchApp.fetch(url, options);
     Logger.log('HTTP status: ' + response.getResponseCode());
     var raw  = response.getContentText();
     Logger.log('Raw (first 600): ' + raw.substring(0, 600));
     var data = JSON.parse(raw);
     if (data.error) return JSON.stringify({ error: data.error.message });
- 
+
     var finishReason = (data.candidates && data.candidates[0] && data.candidates[0].finishReason) || 'unknown';
     Logger.log('Finish reason: ' + finishReason);
- 
+
     var text = '';
     if (data.candidates && data.candidates[0] && data.candidates[0].content &&
         data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
@@ -662,13 +700,13 @@ function runGeminiAdvisor() {
     }
     text = text.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'').trim();
     return text;
- 
+
   } catch(e) {
     Logger.log('runGeminiAdvisor error: ' + e.toString());
     return JSON.stringify({ error: e.toString() });
   }
 }
- 
+
 function testGeminiAdvisor() {
   var result = runGeminiAdvisor();
   Logger.log('Result (first 500): ' + result.substring(0, 500));
@@ -691,18 +729,15 @@ function readStocksDetail(ss, accounts) {
   try {
     const sh = ss.getSheetByName(SHEETS.STOCKS_MF);
     if (!sh) { Logger.log('Sheet missing: ' + SHEETS.STOCKS_MF); return null; }
-
     // Helper: get single cell value, 1-indexed row/col (A=1)
     const cellVal = function(r, c) { return sh.getRange(r, c).getValue(); };
     // Helper: get a single row as array, 1-indexed
     const rowVals = function(r, startC, cnt) { return sh.getRange(r, startC, 1, cnt).getValues()[0]; };
     // Helper: get a 2-D block, 1-indexed
     const blk = function(r, c, nr, nc) { return sh.getRange(r, c, nr, nc).getValues(); };
-
     // ── L2 totals from Section A ─────────────────────────────
     const zerodhaTotalVal = num(cellVal(7, 4));  // D7
     const othersTotalVal  = num(cellVal(8, 4));  // D8
-
     // ── Account breakdown rows 20-24, total row 25, cols B-F ─
     const acctData   = blk(20, 2, 5, 5);
     const totalData  = rowVals(25, 2, 5);
@@ -717,17 +752,14 @@ function readStocksDetail(ss, accounts) {
       pl:       num(totalData[3]),
       plPct:    num(totalData[4])
     };
-
     // ── Asset Class split rows 29-32, cols B-D ───────────────
     const assetClass = blk(29, 2, 4, 3)
       .filter(function(r) { return r[0] !== '' && r[0] !== null; })
       .map(function(r) { return { label: String(r[0]), value: num(r[1]), pct: num(r[2]) }; });
-
     // ── Cap split rows 29-31, cols E-G ───────────────────────
     const capSplit = blk(29, 5, 3, 3)
       .filter(function(r) { return r[0] !== '' && r[0] !== null; })
       .map(function(r) { return { label: String(r[0]), value: num(r[1]), pct: num(r[2]) }; });
-
     // ── Sectors rows 36-44, left cols B-D + right cols E-G ───
     const secLeft  = blk(36, 2, 9, 3);
     const secRight = blk(36, 5, 9, 3);
@@ -739,7 +771,6 @@ function readStocksDetail(ss, accounts) {
         sectors.push({ label: String(secRight[i][0]), value: num(secRight[i][1]), pct: num(secRight[i][2]) });
     }
     sectors.sort(function(a, b) { return b.value - a.value; });
-
     // ── IPO list rows 65-104, cols B-G, filter Zerodha=FALSE ─
     const ipoOthers = blk(65, 2, 40, 6)
       .filter(function(r) { return r[0] !== '' && r[0] !== null; })
@@ -751,7 +782,6 @@ function readStocksDetail(ss, accounts) {
       .map(function(r) {
         return { account: String(r[0]), stock: String(r[1]), invested: num(r[2]), value: num(r[3]), pl: num(r[4]) };
       });
-
     // ── Euro Equity from Account sheet (Category = Euro Equity) ─
     const euroEquity = (accounts || [])
       .filter(function(a) { return String(a.Category || '').trim() === 'Euro Equity'; })
@@ -765,22 +795,17 @@ function readStocksDetail(ss, accounts) {
         };
       })
       .sort(function(a, b) { return b.value - a.value; });
-
     const euroEquityTotal = euroEquity.reduce(function(s, a) { return s + a.value; }, 0);
-
     return { zerodhaTotalVal, othersTotalVal, euroEquityTotal, euroEquity, accounts: accounts_, familyTotal, assetClass, capSplit, sectors, ipoOthers };
-
   } catch(e) {
     Logger.log('readStocksDetail error: ' + e.toString());
     return null;
   }
 }
-
 // ============================================================
 // PORTFOLIO ACTION TRACKER — backend for the reallocation
 // tracker artifact. Adds a "Tracker" tab to this same workbook.
 // ============================================================
-
 function doPost(e) {
   const body = JSON.parse(e.postData.contents);
   updateTrackerItem(body.taskId, body.done, body.note);
@@ -788,7 +813,6 @@ function doPost(e) {
     JSON.stringify({ ok: true })
   ).setMimeType(ContentService.MimeType.JSON);
 }
-
 /* ---------- ONE-TIME SETUP ----------
    Run this once from the Apps Script editor (select
    runSetupTracker from the function dropdown, click Run).
@@ -803,7 +827,6 @@ function runSetupTracker() {
   sheet.clear();
   sheet.getRange(1, 1, 1, 4).setValues([['task_id', 'done', 'note', 'last_updated']]);
   sheet.setFrozenRows(1);
-
   const taskIds = [
     'ex-mukka','ex-mepz','ex-rajexpo','ex-balajee','ex-radiowalla','ex-happstmnds',
     'ex-medistep','ex-msafe','ex-simca','ex-srtl','ex-aatmaj','ex-cotfab',
@@ -819,13 +842,10 @@ function runSetupTracker() {
     'research-ksb','research-coalindia','research-wabag-flags',
     'marc-plan'
   ];
-
   const rows = taskIds.map(id => [id, false, '', '']);
   sheet.getRange(2, 1, rows.length, 4).setValues(rows);
-
   SpreadsheetApp.getUi().alert('Tracker sheet created with ' + rows.length + ' tasks.');
 }
-
 /* ---------- READ all tracker states ---------- */
 function getTrackerState() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TRACKER_SHEET_NAME);
@@ -839,7 +859,6 @@ function getTrackerState() {
   }
   return state;
 }
-
 /* ---------- WRITE one tracker item ---------- */
 function updateTrackerItem(taskId, done, note) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TRACKER_SHEET_NAME);

@@ -8,13 +8,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <title>Family Treasury</title>
-
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-
 <style>
   :root {
     --bg: #a3cca0; --bg-tint: #b6d6b3; --card: #ffffff; --card-inner: #f6f8f4;
@@ -75,7 +73,6 @@
   .alloc-item:last-child { border-bottom: none; }
   .avatar { width: 38px; height: 38px; border-radius: 999px; background: var(--dark); display: grid; place-items: center; color: var(--orange); font-weight: 800; font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
   @media (max-width: 640px) { .hero-num { font-size: 48px !important; } }
-
   /* Real estate toggle */
   .re-toggle-wrap {
     display: inline-flex; align-items: center; gap-gap: 0;
@@ -101,7 +98,6 @@
   .re-toggle-label { font-size: 12px; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
   .re-toggle-wrap.on .re-toggle-label { color: var(--text); }
   .re-amount { font-size: 11px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-
   /* Passive Income group cards */
   .pi-group { border: 1px solid var(--border); border-radius: 16px; overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s; background: var(--card-inner); }
   .pi-group[open] { border-color: var(--border-strong); box-shadow: 0 2px 8px rgba(26,29,31,0.05); }
@@ -116,7 +112,6 @@
   .pi-subgroup summary:hover { background: var(--card-inner); }
   .pi-leaves { background: var(--card-inner); }
   .pi-leaf { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 16px 9px 30px; border-top: 1px dashed var(--border); }
-
   /* AI Advisor */
   .ai-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; background: var(--dark); color: #fff; border: none; border-radius: 999px; font-family: 'Manrope', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
   .ai-btn:hover:not(:disabled) { background: #2d3137; transform: translateY(-1px); }
@@ -147,7 +142,6 @@
 </style>
 </head>
 <body class="pb-16">
-
 <header class="sticky top-0 z-30" style="background: rgba(163,204,160,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
   <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
     <div class="flex items-center gap-3">
@@ -166,22 +160,18 @@
     </div>
   </div>
 </header>
-
 <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
-
   <section class="reveal reveal-1 mb-5">
     <div class="card p-6 sm:p-8">
       <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
         <div>
           <div class="section-label mb-3">Net Worth · INR</div>
           <div class="hero-num text-[64px] sm:text-[88px]">₹<span id="heroNetWorth"></span></div>
-
           <!-- Pills row -->
           <div class="flex flex-wrap items-center gap-2 mt-4">
             <span id="heroChange" class="pill"></span>
             <span id="heroEur" class="pill pill-neutral"></span>
           </div>
-
           <!-- Real estate toggle -->
           <div class="mt-4">
             <label id="reToggleWrap" class="re-toggle-wrap on" onclick="toggleRealEstate()">
@@ -193,9 +183,7 @@
             </label>
           </div>
         </div>
-
         <div class="hidden sm:block w-px self-stretch" style="background: var(--border);"></div>
-
         <div class="grid grid-cols-2 gap-3 sm:w-[380px]">
           <!-- Row 1: Liquid + Fixed Deposit -->
           <div class="card-inner p-3.5" style="border-left: 12px solid #e8714a;">
@@ -232,7 +220,6 @@
           </div>
         </div>
       </div>
-
       <!-- AI results — inline below hero -->
       <div id="aiStatus" style="display:none;" class="ai-status-wrap mt-5 pt-5" style="border-top: 1px solid var(--border);">
         <span class="ai-spinner"></span>
@@ -244,10 +231,8 @@
         <div id="aiCards" class="space-y-3"></div>
       </div>
       <div id="aiError" style="display:none; margin-top:12px;" class="ai-error"></div>
-
     </div>
   </section>
-
   <section class="reveal reveal-2 mb-5">
     <div class="card p-5 sm:p-7">
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
@@ -262,7 +247,6 @@
       <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
     </div>
   </section>
-
   <section class="reveal reveal-2b mb-5">
     <div class="card p-5 sm:p-7">
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
@@ -279,7 +263,6 @@
       <div id="piCategoryList" class="space-y-3"></div>
     </div>
   </section>
-
   <section class="reveal reveal-3 mb-5">
     <div class="card p-5 sm:p-7">
       <div class="section-label mb-1">Currency exposure</div>
@@ -308,7 +291,6 @@
       </div>
     </div>
   </section>
-
   <section class="reveal reveal-4 mb-5">
     <div class="card p-5 sm:p-7">
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
@@ -323,12 +305,42 @@
       </div>
     </div>
   </section>
-
   <section class="reveal reveal-4 grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
     <div class="card p-5 sm:p-6"><div class="section-label mb-1">Income sources</div><div class="text-2xl mb-5" style="font-weight: 800;">Last 12 months</div><div id="incomeList" class="space-y-4"></div></div>
     <div class="card p-5 sm:p-6"><div class="section-label mb-1">Expense categories</div><div class="text-2xl mb-5" style="font-weight: 800;">Last 12 months</div><div id="expenseList" class="space-y-4"></div></div>
   </section>
-
+  <!-- ═══════════════════════════════════════════════════════
+       BUDGETS  —  category-level spend vs plan (Monthly + Yearly)
+       Source: "Budgets" tab — Category | Period (Monthly/Yearly) |
+       Budget Amount | Currency | Active. Fully sheet-driven — add,
+       remove, or retire (Active=FALSE) rows there, no code changes.
+  ════════════════════════════════════════════════════════ -->
+  <section class="reveal reveal-4 mb-5">
+    <div class="card p-5 sm:p-7">
+      <div class="section-label mb-1">Spending plan</div>
+      <div class="text-2xl mb-5" style="font-weight: 800;">Budgets</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6">
+        <div>
+          <div class="flex items-baseline justify-between mb-3">
+            <div class="text-sm" style="font-weight: 700; color: var(--text-dim);">Monthly</div>
+            <div id="budgetMonthlyMeta" class="text-[11px]" style="color: var(--text-muted); font-weight: 500;"></div>
+          </div>
+          <div id="budgetMonthlyList" class="space-y-4"></div>
+        </div>
+        <div>
+          <div class="flex items-baseline justify-between mb-3">
+            <div class="text-sm" style="font-weight: 700; color: var(--text-dim);">Yearly</div>
+            <div id="budgetYearlyMeta" class="text-[11px]" style="color: var(--text-muted); font-weight: 500;"></div>
+          </div>
+          <div id="budgetYearlyList" class="space-y-4"></div>
+        </div>
+      </div>
+      <div class="mt-5 pt-4 flex items-center justify-between" style="border-top: 1px solid var(--border);">
+        <span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">Unbudgeted spend · this month</span>
+        <span id="budgetUnbudgeted" class="num text-sm" style="font-weight: 700; color: var(--text-dim);"></span>
+      </div>
+    </div>
+  </section>
   <!-- ═══════════════════════════════════════════════════════
        REMITTANCES  —  EUR → INR transfers (Commerzbank/N26 → SBI)
   ════════════════════════════════════════════════════════ -->
@@ -364,7 +376,6 @@
       </div>
     </div>
   </section>
-
   <section class="reveal reveal-5 mb-5">
     <div class="card p-5 sm:p-7">
       <div class="section-label mb-1">All accounts</div>
@@ -375,13 +386,11 @@
       <div id="accountsList" class="space-y-3"></div>
     </div>
   </section>
-
   <!-- ═══════════════════════════════════════════════════════
        STOCKS & MF DEEP DIVE  —  L1 / L2 / L3
   ════════════════════════════════════════════════════════ -->
   <section class="reveal reveal-5 mb-5" id="smfSection">
     <div class="card p-5 sm:p-7">
-
       <!-- L1 — total headline -->
       <div class="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
@@ -394,10 +403,8 @@
           <div id="smfPL" class="num text-[12px] mt-0.5" style="font-weight: 600;"></div>
         </div>
       </div>
-
       <!-- L2 — Zerodha vs Others vs Euro Equity -->
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-
         <!-- L2 left: Zerodha Family -->
         <div class="card-inner p-4" style="border-left: 12px solid #15803d;">
           <div class="section-label mb-1">Zerodha Family · 5 accounts</div>
@@ -430,7 +437,6 @@
             </div>
           </details>
         </div>
-
         <!-- L2 middle: Others / IPO -->
         <div class="card-inner p-4" style="border-left: 12px solid #84cc16;">
           <div class="section-label mb-1">Others · IPO holdings</div>
@@ -447,7 +453,6 @@
             </div>
           </details>
         </div>
-
         <!-- L2 right: Euro Equity -->
         <div class="card-inner p-4" style="border-left: 12px solid #f97316;">
           <div class="section-label mb-1">Euro Equity</div>
@@ -464,24 +469,19 @@
             </div>
           </details>
         </div>
-
       </div>
     </div>
   </section>
-
   <section class="reveal reveal-5 mb-5">
     <div class="card p-5 sm:p-7"><div class="section-label mb-1">Activity</div><div class="text-2xl mb-5" style="font-weight: 800;">Recent transactions</div><div id="txnList"></div></div>
   </section>
-
   <footer class="text-center text-[11px] mt-10 mb-8" style="color: var(--dark); opacity: 0.7; font-weight: 500;">
     Data source · Google Sheet · refreshes on load<br>
     <span class="opacity-70">Add to Home Screen on iOS · Install as App on Android</span>
   </footer>
 </main>
-
 <script>
 const DATA = <?!= data ?>;
-
 // Parses a 'yyyy-MM-dd' string by its literal components instead of
 // new Date(str), which avoids UTC/local-timezone off-by-one-day (or
 // off-by-one-month, on month-end dates) bugs depending on the viewer's
@@ -490,7 +490,6 @@ function parseISODate(s) {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, m - 1, d);
 }
-
 // ── Formatters ───────────────────────────────────────────────
 const fmtINR = n => {
   if (!n) return '₹0';
@@ -508,20 +507,16 @@ const fmtCcy = (n, ccy) => {
   const locale = ccy === 'EUR' ? 'de-DE' : 'en-IN';
   return (n<0?'−':'') + symbol + Math.abs(n).toLocaleString(locale, {maximumFractionDigits: ccy==='EUR'?2:0});
 };
-
 Chart.defaults.color = '#8a8f96';
 Chart.defaults.font.family = "'Manrope', sans-serif";
 Chart.defaults.font.size = 11;
 Chart.defaults.font.weight = '500';
 Chart.defaults.borderColor = '#e8ece6';
-
 // ── Header date ──────────────────────────────────────────────
 const asOf = new Date(DATA.asOf);
 document.getElementById('headerDate').textContent = asOf.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
 // ── Real estate toggle ───────────────────────────────────────
 let includeRealEstate = true; // default ON
-
 function updateHeroNumber() {
   const total = includeRealEstate
     ? DATA.summary.total                              // base + realEstate
@@ -529,7 +524,6 @@ function updateHeroNumber() {
   document.getElementById('heroNetWorth').textContent = fmtINRplain(total);
   document.getElementById('heroEur').textContent = '≈ €' + Math.round(total / (DATA.eurRate || 112)).toLocaleString('de-DE');
 }
-
 function toggleRealEstate() {
   includeRealEstate = !includeRealEstate;
   const track = document.getElementById('reToggleTrack');
@@ -546,38 +540,28 @@ function toggleRealEstate() {
   }
   updateHeroNumber();
 }
-
 // Set the toggle amount label (shown always, e.g. "₹1.25 Cr")
 document.getElementById('reToggleAmt').textContent = fmtINR(DATA.summary.realEstate);
-
 // Initial hero render
 updateHeroNumber();
-
 // Note: the "hero change" pill is now computed inside trendRender() below,
 // so it stays in sync with whichever range (3M/6M/1Y/All) is selected.
-
 // ── KPI tiles ────────────────────────────────────────────────
 {
   const s   = DATA.summary;
   const nw  = s.total; // always incl. real estate for % denominator
   const pct = v => nw ? (v / nw * 100).toFixed(1) + '% of NW' : '—';
-
   document.getElementById('kpiLiquid').textContent      = fmtINR(s.liquid);
   document.getElementById('kpiLiquidPct').textContent   = pct(s.liquid);
-
   document.getElementById('kpiFD').textContent          = fmtINR(s.fixedDeposit || 0);
   document.getElementById('kpiFDPct').textContent       = pct(s.fixedDeposit || 0);
-
   document.getElementById('kpiStocksMF').textContent    = fmtINR(s.stocksMF);
   document.getElementById('kpiStocksMFPct').textContent = pct(s.stocksMF);
-
   document.getElementById('kpiGold').textContent        = fmtINR(s.gold);
   document.getElementById('kpiGoldPct').textContent     = pct(s.gold);
-
   document.getElementById('kpiRealEstate').textContent    = fmtINR(s.realEstate);
   document.getElementById('kpiRealEstatePct').textContent = pct(s.realEstate);
 }
-
 // ── Trend chart ──────────────────────────────────────────────
 {
   const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -585,12 +569,10 @@ updateHeroNumber();
     const dt = parseISODate(s);
     return MONTH_ABBR[dt.getMonth()] + " '" + String(dt.getFullYear()).slice(-2);
   }
-
   const ctx = document.getElementById('trendChart');
   const grad = ctx.getContext('2d').createLinearGradient(0, 0, 0, 240);
   grad.addColorStop(0, 'rgba(34, 197, 94, 0.28)');
   grad.addColorStop(1, 'rgba(34, 197, 94, 0)');
-
   const trendChart = new Chart(ctx, {
     type: 'line',
     data: {
@@ -616,20 +598,17 @@ updateHeroNumber();
       }
     }
   });
-
   function trendFilter(range) {
     if (range === 'all') return DATA.trend;
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - Number(range));
     return DATA.trend.filter(d => parseISODate(d.date) >= cutoff);
   }
-
   function trendRender(range) {
     const rows = trendFilter(range);
     trendChart.data.labels = rows.map(d => monthLabel(d.date));
     trendChart.data.datasets[0].data = rows.map(d => d.total);
     trendChart.update();
-
     // Keep the hero "change" pill in sync with whatever range is showing
     const chip = document.getElementById('heroChange');
     if (rows.length >= 2) {
@@ -647,16 +626,13 @@ updateHeroNumber();
       chip.style.display = 'none';
     }
   }
-
   window.setTrendRange = function(range, btn) {
     btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     trendRender(range);
   };
-
   trendRender(6); // default: 6M, matching the active button
 }
-
 // ── Currency split ───────────────────────────────────────────
 {
   const c = DATA.currencySplit;
@@ -671,7 +647,6 @@ updateHeroNumber();
   document.getElementById('ccyEurAmt').textContent = '€' + Math.round(c.eur / (DATA.eurRate || 112)).toLocaleString('de-DE') + ' · ' + fmtINR(c.eur);
   document.getElementById('ccyRate').textContent = '₹' + (DATA.eurRate || 0).toFixed(2);
 }
-
 // ── Cash flow chart ──────────────────────────────────────────
 {
   const cf = DATA.cashflow;
@@ -692,7 +667,6 @@ updateHeroNumber();
   document.getElementById('kpiAvgExp').textContent = '€' + Math.round(avgExp).toLocaleString('de-DE');
   document.getElementById('kpiSavings').textContent = avgInc ? ((avgInc - avgExp) / avgInc * 100).toFixed(1) + '%' : '—';
 }
-
 // ── Remittances ──────────────────────────────────────────────
 {
   const ENTRIES = (DATA.remittance && DATA.remittance.entries) || []; // full history, most recent first
@@ -702,7 +676,6 @@ updateHeroNumber();
     return MONTH_ABBR[dt.getMonth()] + " '" + String(dt.getFullYear()).slice(-2);
   };
   const isoDate = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-
   const remitChart = new Chart(document.getElementById('remitChart'), {
     type: 'bar',
     data: {
@@ -744,7 +717,6 @@ updateHeroNumber();
       }
     }
   });
-
   // Buckets already-date-filtered entries into monthly totals + a
   // weighted average rate per month (sum INR ÷ sum EUR — same method
   // used for the all-time avg, not a naive average of individual rates).
@@ -762,7 +734,6 @@ updateHeroNumber();
       rate: buckets[k].eur ? buckets[k].inr / buckets[k].eur : 0
     }));
   }
-
   // Single render path for BOTH the preset buttons and the custom date
   // range — chart, the three summary tiles, and the list all recompute
   // from whatever's inside [fromDate, toDate], so nothing goes stale.
@@ -771,22 +742,18 @@ updateHeroNumber();
       const d = parseISODate(e.date);
       return d >= fromDate && d <= toDate;
     });
-
     const rows = bucketByMonth(filtered);
     remitChart.data.labels = rows.map(d => remitMonthLabel(d.date));
     remitChart.data.datasets[0].data = rows.map(d => d.inr);
     remitChart.data.datasets[1].data = rows.map(d => Math.round(d.rate * 100) / 100);
     remitChart.update();
-
     const totalInr = filtered.reduce((s, e) => s + e.inr, 0);
     const totalEur = filtered.reduce((s, e) => s + e.eur, 0);
     const avgRate  = totalEur ? totalInr / totalEur : 0;
-
     document.getElementById('remitTotalInr').textContent = fmtINR(Math.round(totalInr));
     document.getElementById('remitTotalEur').textContent = '€' + Math.round(totalEur).toLocaleString('de-DE');
     document.getElementById('remitAvgRate').textContent  = totalEur ? '₹' + avgRate.toFixed(2) : '—';
     document.getElementById('remitMeta').textContent      = filtered.length + ' transfers · ' + metaLabel;
-
     document.getElementById('remitList').innerHTML = filtered.length ? filtered.map(r => {
       const dayLabel = parseISODate(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       return `
@@ -802,12 +769,10 @@ updateHeroNumber();
         </div>`;
     }).join('') : '<div class="text-sm" style="color: var(--text-muted);">No remittances in this range.</div>';
   }
-
   function syncDateInputs(fromDate, toDate) {
     document.getElementById('remitFromDate').value = isoDate(fromDate);
     document.getElementById('remitToDate').value   = isoDate(toDate);
   }
-
   // Bound the date pickers to the actual data range so an out-of-range
   // pick isn't possible.
   if (ENTRIES.length) {
@@ -818,11 +783,9 @@ updateHeroNumber();
     document.getElementById('remitToDate').min   = earliest;
     document.getElementById('remitToDate').max   = latest;
   }
-
   window.setRemitRange = function(range, btn) {
     btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-
     const to = new Date();
     let from;
     if (range === 'all') {
@@ -834,7 +797,6 @@ updateHeroNumber();
     syncDateInputs(from, to);
     renderRange(from, to, range === 'all' ? 'all time' : range + 'M');
   };
-
   window.remitApplyCustomRange = function() {
     const fromVal = document.getElementById('remitFromDate').value;
     const toVal   = document.getElementById('remitToDate').value;
@@ -843,7 +805,6 @@ updateHeroNumber();
     document.querySelectorAll('#remitRangeButtons .tab-btn').forEach(b => b.classList.remove('active'));
     renderRange(parseISODate(fromVal), parseISODate(toVal), 'custom range');
   };
-
   // Initial render: default 1Y, matching the active preset button
   {
     const to = new Date();
@@ -853,7 +814,6 @@ updateHeroNumber();
     renderRange(from, to, '12M');
   }
 }
-
 // ── Income / expense breakdown ───────────────────────────────
 function renderBreakdown(elId, items, unit) {
   if (!items.length) { document.getElementById(elId).innerHTML = '<div class="text-sm" style="color: var(--text-muted);">No data in the last 12 months.</div>'; return; }
@@ -876,26 +836,57 @@ function renderBreakdown(elId, items, unit) {
 }
 renderBreakdown('incomeList', DATA.income, '€');
 renderBreakdown('expenseList', DATA.expense, '€');
-
+// ── Budgets ───────────────────────────────────────────────────
+{
+  const statusColor = { ok: '#22c55e', near: '#eab308', over: '#ef4444' };
+  const statusPill  = { ok: 'pill-green', near: 'pill-gold', over: 'pill-red' };
+  const statusLabel = { ok: 'On track', near: 'Near limit', over: 'Over budget' };
+  function renderBudgetList(elId, metaId, rows, periodLabel) {
+    const metaEl = document.getElementById(metaId);
+    if (!rows.length) {
+      document.getElementById(elId).innerHTML = '<div class="text-sm" style="color: var(--text-muted);">No ' + periodLabel.toLowerCase() + ' budgets set.</div>';
+      if (metaEl) metaEl.textContent = '';
+      return;
+    }
+    if (metaEl) metaEl.textContent = rows.length + (rows.length === 1 ? ' category' : ' categories');
+    document.getElementById(elId).innerHTML = rows.map(r => {
+      const barPct = Math.min(r.pct, 100);
+      const color = statusColor[r.status] || '#94a3b8';
+      return `
+        <div>
+          <div class="flex items-baseline justify-between mb-1.5">
+            <span class="text-sm truncate" style="font-weight: 600;">${r.category}</span>
+            <span class="pill ${statusPill[r.status] || 'pill-neutral'}" style="font-size: 10px; padding: 2px 8px;">${statusLabel[r.status] || ''}</span>
+          </div>
+          <div class="hbar"><span style="width: ${barPct}%; background: ${color};"></span></div>
+          <div class="flex items-baseline justify-between mt-1.5">
+            <span class="num text-[11px]" style="color: var(--text-muted); font-weight: 500;">${fmtINR(r.actual)} of ${fmtINR(r.budgeted)}</span>
+            <span class="num text-[11px]" style="font-weight: 700; color: ${color};">${r.pct}%</span>
+          </div>
+        </div>`;
+    }).join('');
+  }
+  const budget = DATA.budget || { monthly: [], yearly: [], unbudgeted: 0 };
+  renderBudgetList('budgetMonthlyList', 'budgetMonthlyMeta', budget.monthly, 'Monthly');
+  renderBudgetList('budgetYearlyList', 'budgetYearlyMeta', budget.yearly, 'Yearly');
+  document.getElementById('budgetUnbudgeted').textContent = fmtINR(budget.unbudgeted || 0);
+}
 // ── Passive Income (Wallet) ───────────────────────────────────
 {
   const PI_DATA = DATA.passiveIncome || [];
   const piColors = ['#22c55e', '#15803d', '#84cc16', '#eab308', '#06b6d4', '#8b5cf6', '#f97316', '#64748b'];
-
   // Categories are dynamic (new ones can appear anytime), but anything
   // starting with "IPO Profit" always rolls up into one parent group.
   function piParentLabel(cat) {
     const c = String(cat || '').trim();
     return /^ipo profit/i.test(c) ? 'IPO Profit (Realized)' : (c || 'Other');
   }
-
   function piFilter(range) {
     if (range === 'all') return PI_DATA;
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - Number(range));
     return PI_DATA.filter(d => parseISODate(d.date) >= cutoff);
   }
-
   function piRenderGroups(rows) {
     const total = rows.reduce((s, r) => s + r.amt, 0);
     const groups = {};
@@ -904,23 +895,19 @@ renderBreakdown('expenseList', DATA.expense, '€');
       if (!groups[label]) groups[label] = [];
       groups[label].push(r);
     });
-
     const parents = Object.keys(groups)
       .map(label => ({ label, items: groups[label], amt: groups[label].reduce((s,i) => s + i.amt, 0) }))
       .filter(g => g.amt > 0)
       .sort((a, b) => b.amt - a.amt);
-
     if (!parents.length) {
       document.getElementById('piCategoryList').innerHTML = '<div class="text-sm" style="color: var(--text-muted);">No income entries in this range.</div>';
       return;
     }
-
     document.getElementById('piCategoryList').innerHTML = parents.map((g, idx) => {
       const color = piColors[idx % piColors.length];
       const pct = total ? (g.amt/total*100) : 0;
       const isIpo = g.label === 'IPO Profit (Realized)';
       const unitWord = (n) => isIpo ? (n === 1 ? 'IPO' : 'IPOs') : (n === 1 ? 'entry' : 'entries');
-
       // Level 2: collapse duplicate raw entries into unique categories
       const subMap = {};
       g.items.forEach(i => {
@@ -931,7 +918,6 @@ renderBreakdown('expenseList', DATA.expense, '€');
       const subs = Object.keys(subMap)
         .map(cat => ({ cat, items: subMap[cat], amt: subMap[cat].reduce((s,i) => s + i.amt, 0) }))
         .sort((a, b) => b.amt - a.amt);
-
       const subsHtml = subs.map(s => {
         const subPct = g.amt ? (s.amt/g.amt*100) : 0;
         const leavesHtml = s.items
@@ -945,7 +931,6 @@ renderBreakdown('expenseList', DATA.expense, '€');
               </div>
               <div class="num text-sm shrink-0" style="font-weight: 700;">₹${leaf.amt.toLocaleString('en-IN')}</div>
             </div>`).join('');
-
         return `
           <details class="pi-subgroup" style="border-left-color: ${color};">
             <summary>
@@ -962,7 +947,6 @@ renderBreakdown('expenseList', DATA.expense, '€');
             <div class="pi-leaves">${leavesHtml}</div>
           </details>`;
       }).join('');
-
       return `
         <details ${idx === 0 ? 'open' : ''} class="pi-group">
           <summary class="px-4 sm:px-5 py-4">
@@ -984,7 +968,6 @@ renderBreakdown('expenseList', DATA.expense, '€');
         </details>`;
     }).join('');
   }
-
   function piRender(range) {
     const rows = piFilter(range);
     const total = rows.reduce((s, r) => s + r.amt, 0);
@@ -994,16 +977,13 @@ renderBreakdown('expenseList', DATA.expense, '€');
       : `Last ${range} months · ${rows.length} entries`;
     piRenderGroups(rows);
   }
-
   window.setPassiveIncomeRange = function(range, btn) {
     btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     piRender(range);
   };
-
   piRender(12); // default: last 12 months
 }
-
 // ── Account groups ───────────────────────────────────────────
 {
   const colorMap = {
@@ -1048,7 +1028,6 @@ renderBreakdown('expenseList', DATA.expense, '€');
       </details>`;
   }).join('');
 }
-
 // ── Recent transactions ──────────────────────────────────────
 {
   const pillClass = { 'Income': 'pill-green', 'Expense': 'pill-orange', 'Transfer': 'pill-slate', 'Remit': 'pill-gold' };
@@ -1073,7 +1052,6 @@ renderBreakdown('expenseList', DATA.expense, '€');
       </div>`;
   }).join('');
 }
-
 // ── Stocks & MF deep dive ─────────────────────────────────────
 {
   const sd = DATA.stocksDetail;
@@ -1082,27 +1060,23 @@ renderBreakdown('expenseList', DATA.expense, '€');
     const plSign   = v => v >= 0 ? '+' : '−';
     const fmtPct   = v => (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%';
     const fmtPctRaw= v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
-
     // L1 total — Zerodha + Others + Euro Equity
     const totalVal = sd.zerodhaTotalVal + sd.othersTotalVal + (sd.euroEquityTotal || 0);
     const totalPL  = sd.familyTotal.pl; // Zerodha P&L only (Others P&L not separately available at L1)
     document.getElementById('smfTotal').textContent   = fmtINR(totalVal);
     document.getElementById('smfPL').innerHTML =
       `<span style="color:${plColor(totalPL)};">${plSign(totalPL)}${fmtINR(Math.abs(totalPL))} Zerodha P&L (${fmtPctRaw(sd.familyTotal.plPct)})</span>`;
-
     // L2 Zerodha
     const zPL = sd.familyTotal.pl;
     document.getElementById('smfZerodhVal').textContent = fmtINR(sd.zerodhaTotalVal);
     document.getElementById('smfZerodhaPL').innerHTML =
       `<span style="color:${plColor(zPL)};">${plSign(zPL)}${fmtINR(Math.abs(zPL))} · ${fmtPctRaw(sd.familyTotal.plPct)}</span>`;
-
     // L2 Others
     const othInvested = sd.ipoOthers.reduce((s,x) => s + x.invested, 0);
     const othPL       = sd.ipoOthers.reduce((s,x) => s + x.pl, 0);
     document.getElementById('smfOthersVal').textContent = fmtINR(sd.othersTotalVal);
     document.getElementById('smfOthersPL').innerHTML =
       `<span style="color:${plColor(othPL)};">${plSign(othPL)}${fmtINR(Math.abs(othPL))} unrealized</span>`;
-
     // L3 Zerodha — per-account table
     const maxVal = Math.max(...sd.accounts.map(a => a.value), 1);
     document.getElementById('smfAcctTable').innerHTML = [
@@ -1123,7 +1097,6 @@ renderBreakdown('expenseList', DATA.expense, '€');
         <span class="num text-[12px]" style="font-weight: 800; color:${plColor(sd.familyTotal.pl)};">${plSign(sd.familyTotal.pl)}${fmtINR(Math.abs(sd.familyTotal.pl))} (${fmtPctRaw(sd.familyTotal.plPct)})</span>
       </div>`
     ].join('');
-
     // L3 Zerodha — asset class bars
     const assetColors = ['#8b5cf6','#15803d','#06b6d4','#f97316'];
     const maxAsset = Math.max(...sd.assetClass.map(a => a.value), 1);
@@ -1135,7 +1108,6 @@ renderBreakdown('expenseList', DATA.expense, '€');
         </div>
         <div class="hbar"><span style="width:${(a.value/maxAsset*100).toFixed(1)}%; background:${assetColors[i%assetColors.length]};"></span></div>
       </div>`).join('');
-
     // L3 Zerodha — cap split bars
     const capColors = { 'Large Cap':'#15803d', 'Mid Cap':'#eab308', 'Small Cap':'#f97316' };
     const maxCap = Math.max(...sd.capSplit.map(c => c.value), 1);
@@ -1147,7 +1119,6 @@ renderBreakdown('expenseList', DATA.expense, '€');
         </div>
         <div class="hbar"><span style="width:${(c.value/maxCap*100).toFixed(1)}%; background:${capColors[c.label]||'#64748b'};"></span></div>
       </div>`).join('');
-
     // L3 Zerodha — sector bars (sorted high to low, already sorted in Code.gs)
     const maxSec = sd.sectors.length ? sd.sectors[0].value : 1;
     const secPalette = ['#15803d','#22c55e','#06b6d4','#8b5cf6','#f97316','#eab308','#ef4444','#64748b','#84cc16','#0ea5e9'];
@@ -1162,7 +1133,6 @@ renderBreakdown('expenseList', DATA.expense, '€');
         </div>
         <div class="hbar"><span style="width:${(s.value/maxSec*100).toFixed(1)}%; background:${secPalette[i%secPalette.length]};"></span></div>
       </div>`).join('');
-
     // L3 Others — IPO list sorted by current value high to low
     const ipos = [...sd.ipoOthers].sort((a, b) => b.value - a.value);
     const maxIpo = ipos.length ? ipos[0].value : 1;
@@ -1179,12 +1149,10 @@ renderBreakdown('expenseList', DATA.expense, '€');
         <div class="hbar"><span style="width:${(ip.value/maxIpo*100).toFixed(1)}%; background:#84cc16;"></span></div>
       </div>`).join('')
     : '<div class="text-sm" style="color:var(--text-muted);">No non-Zerodha holdings found.</div>';
-
     // L2 Euro Equity
     const euroEquity = sd.euroEquity || [];
     const euroTotal  = sd.euroEquityTotal || 0;
     document.getElementById('smfEuroVal').textContent = fmtINR(euroTotal);
-
     // L3 Euro Equity — account list
     const maxEuro = euroEquity.length ? euroEquity[0].value : 1;
     document.getElementById('smfEuroList').innerHTML = euroEquity.length ? euroEquity.map(e => `
@@ -1201,7 +1169,6 @@ renderBreakdown('expenseList', DATA.expense, '€');
     : '<div class="text-sm" style="color:var(--text-muted);">No Euro equity accounts found.</div>';
   }
 }
-
 // ── AI Financial Advisor ──────────────────────────────────────
 function runAIAnalysis() {
   const btn      = document.getElementById('aiAnalyzeBtn');
@@ -1209,13 +1176,11 @@ function runAIAnalysis() {
   const status   = document.getElementById('aiStatus');
   const results  = document.getElementById('aiResults');
   const errorEl  = document.getElementById('aiError');
-
   btn.disabled = true;
   btnText.textContent = 'Analysing...';
   status.style.display = 'flex';
   results.style.display = 'none';
   errorEl.style.display = 'none';
-
   try {
     google.script.run
       .withSuccessHandler(function(text) {
@@ -1257,7 +1222,6 @@ function runAIAnalysis() {
         status.style.display = 'none';
       })
       .runGeminiAdvisor();
-
   } catch(e) {
     errorEl.style.display = 'block';
     errorEl.textContent = '❌ ' + e.message;
@@ -1266,13 +1230,11 @@ function runAIAnalysis() {
     status.style.display = 'none';
   }
 }
-
 function renderAIResults(analysis) {
   const sevClass  = { critical:'ai-sev-critical', warning:'ai-sev-warning', advisory:'ai-sev-advisory', healthy:'ai-sev-healthy' };
   const sevLabel  = { critical:'🔴 Critical', warning:'🟠 Warning', advisory:'🟡 Advisory', healthy:'🟢 Healthy' };
   const sevBorder = { critical:'var(--red)', warning:'var(--orange)', advisory:'var(--gold)', healthy:'var(--green)' };
   const scoreColor = analysis.score >= 75 ? 'var(--green-deep)' : analysis.score >= 50 ? '#92400e' : 'var(--red-deep)';
-
   document.getElementById('aiScoreBar').innerHTML = `
     <div class="ai-score-num" style="color:${scoreColor};">${analysis.score}<span style="font-size:18px;color:var(--text-muted);">/100</span></div>
     <div class="ai-score-track">
@@ -1281,7 +1243,6 @@ function renderAIResults(analysis) {
         <div class="ai-score-fill" id="aiScoreFill" style="width:0%; background:${scoreColor};"></div>
       </div>
     </div>`;
-
   document.getElementById('aiCards').innerHTML = (analysis.cards || []).map((card, i) => `
     <div class="ai-card ${sevClass[card.severity] || 'ai-sev-advisory'}" style="border-left-color:${sevBorder[card.severity]||'var(--gold)'}; animation-delay:${i*0.07}s;">
       <div class="ai-card-top">
@@ -1296,7 +1257,6 @@ function renderAIResults(analysis) {
       <div class="ai-impact-text">${card.impact}</div>
       <div class="ai-action">→ ${card.action}</div>
     </div>`).join('');
-
   document.getElementById('aiResults').style.display = 'block';
   setTimeout(() => {
     const fill = document.getElementById('aiScoreFill');
