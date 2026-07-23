@@ -522,16 +522,30 @@ function remittance(rows) {
 // EUR (mirrors how the rest of the dashboard treats a single blended
 // rate rather than a per-transaction one).
 //
-// Monthly budgets compare against calendar-month-to-date; Yearly
-// budgets compare against calendar-year-to-date (Jan 1 -> today).
-// Categories with expense activity but no matching Active budget row
-// roll into "unbudgeted" (scoped to the current month only, so it
-// never mixes a month window with a year window).
+// Unlike Net Worth (a live balance that must be snapshotted daily or
+// history is lost), budget actuals are always reconstructable later
+// because every transaction keeps its own real date permanently — so
+// this returns a HISTORY per category (last BUDGET_MONTHS_BACK months
+// for Monthly budgets, last BUDGET_YEARS_BACK years for Yearly ones)
+// rather than just "this period", computed fresh on every load. The
+// client picks which month/year to view via a dropdown — no reload,
+// and nothing is lost if the dashboard wasn't opened during a given
+// month. (Caveat: if a category's Budget Amount is changed later, past
+// periods are judged against today's amount, not whatever it was set
+// to at the time — budgets aren't expected to change often enough for
+// this to matter in practice.)
+//
+// "Unbudgeted spend" (expense activity with no matching Active budget
+// row) is also returned as month-by-month history, keyed to the same
+// month dropdown as the Monthly section.
 //
 // Budgets tab columns: Category | Period (Monthly/Yearly) | Budget
 // Amount | Currency | Active. Set Active to FALSE to retire a line
 // without deleting it.
 // ============================================================
+const BUDGET_MONTHS_BACK = 12; // months of history sent for Monthly budgets
+const BUDGET_YEARS_BACK  = 5;  // years of history sent for Yearly budgets
+
 function isActive(row) {
   const v = row.Active;
   if (typeof v === 'boolean') return v;
@@ -541,8 +555,7 @@ function budgetBreakdown(ss, accounts, txns, walletTxns) {
   const budgetRows = readSheet(ss, SHEETS.BUDGETS);
   const rate = latestEurRate(accounts);
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const yearStart  = new Date(now.getFullYear(), 0, 1);
+  const tz  = Session.getScriptTimeZone();
 
   function collect(rows, dateFn) {
     const out = [];
@@ -576,32 +589,63 @@ function budgetBreakdown(ss, accounts, txns, walletTxns) {
 
   const budgetedCats = new Set(budgets.map(b => b.category));
 
-  const rows = budgets.map(b => {
-    const windowStart = b.period === 'Yearly' ? yearStart : monthStart;
-    const actual = expenses
-      .filter(e => e.cat === b.category && e.date >= windowStart && e.date <= now)
-      .reduce((s, e) => s + e.inr, 0);
-    const pct = b.budgeted > 0 ? Math.round((actual / b.budgeted) * 100) : 0;
-    return {
-      category: b.category,
-      period:   b.period,
-      budgeted: b.budgeted,
-      actual:   Math.round(actual),
-      pct:      pct,
-      status:   pct >= 100 ? 'over' : (pct >= 80 ? 'near' : 'ok')
-    };
-  }).sort((a, b) => b.pct - a.pct);
+  // Period keys to compute, oldest first, most recent (current) last.
+  const monthKeys = [];
+  for (let i = BUDGET_MONTHS_BACK - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    monthKeys.push(Utilities.formatDate(d, tz, 'yyyy-MM'));
+  }
+  const yearKeys = [];
+  for (let i = BUDGET_YEARS_BACK - 1; i >= 0; i--) {
+    yearKeys.push(String(now.getFullYear() - i));
+  }
 
-  const unbudgeted = Math.round(
-    expenses
-      .filter(e => !budgetedCats.has(e.cat) && e.date >= monthStart && e.date <= now)
-      .reduce((s, e) => s + e.inr, 0)
-  );
+  // Pre-bucket every expense by category+month and category+year once,
+  // instead of re-filtering the full expense list per category per period.
+  const byCatMonth  = {}; // 'category|yyyy-MM' -> sum
+  const byCatYear   = {}; // 'category|yyyy'    -> sum
+  const unbudgetedByMonth = {}; // 'yyyy-MM' -> sum, categories with no Active budget
+  expenses.forEach(e => {
+    const mk = Utilities.formatDate(e.date, tz, 'yyyy-MM');
+    const yk = String(e.date.getFullYear());
+    byCatMonth[e.cat + '|' + mk] = (byCatMonth[e.cat + '|' + mk] || 0) + e.inr;
+    byCatYear[e.cat + '|' + yk]  = (byCatYear[e.cat + '|' + yk]  || 0) + e.inr;
+    if (!budgetedCats.has(e.cat)) {
+      unbudgetedByMonth[mk] = (unbudgetedByMonth[mk] || 0) + e.inr;
+    }
+  });
+
+  function statusOf(pct) { return pct >= 100 ? 'over' : (pct >= 80 ? 'near' : 'ok'); }
+
+  const monthly = budgets.filter(b => b.period === 'Monthly').map(b => ({
+    category: b.category,
+    history: monthKeys.map(mk => {
+      const actual = byCatMonth[b.category + '|' + mk] || 0;
+      const pct = b.budgeted > 0 ? Math.round((actual / b.budgeted) * 100) : 0;
+      return { period: mk, budgeted: b.budgeted, actual: Math.round(actual), pct: pct, status: statusOf(pct) };
+    })
+  }));
+
+  const yearly = budgets.filter(b => b.period === 'Yearly').map(b => ({
+    category: b.category,
+    history: yearKeys.map(yk => {
+      const actual = byCatYear[b.category + '|' + yk] || 0;
+      const pct = b.budgeted > 0 ? Math.round((actual / b.budgeted) * 100) : 0;
+      return { period: yk, budgeted: b.budgeted, actual: Math.round(actual), pct: pct, status: statusOf(pct) };
+    })
+  }));
+
+  const unbudgeted = monthKeys.map(mk => ({
+    period: mk,
+    amt: Math.round(unbudgetedByMonth[mk] || 0)
+  }));
 
   return {
-    monthly: rows.filter(r => r.period === 'Monthly'),
-    yearly:  rows.filter(r => r.period === 'Yearly'),
-    unbudgeted: unbudgeted
+    months: monthKeys, // for populating the month dropdown, oldest -> current
+    years:  yearKeys,  // for populating the year dropdown, oldest -> current
+    monthly: monthly,  // [{category, history: [{period:'yyyy-MM', budgeted, actual, pct, status}, ...]}]
+    yearly:  yearly,   // [{category, history: [{period:'yyyy',    budgeted, actual, pct, status}, ...]}]
+    unbudgeted: unbudgeted // [{period:'yyyy-MM', amt}, ...]
   };
 }
 // ============================================================

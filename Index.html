@@ -321,22 +321,24 @@
       <div class="text-2xl mb-5" style="font-weight: 800;">Budgets</div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6">
         <div>
-          <div class="flex items-baseline justify-between mb-3">
+          <div class="flex items-center justify-between gap-2 mb-1">
             <div class="text-sm" style="font-weight: 700; color: var(--text-dim);">Monthly</div>
-            <div id="budgetMonthlyMeta" class="text-[11px]" style="color: var(--text-muted); font-weight: 500;"></div>
+            <select id="budgetMonthSelect" class="text-[12px] px-2.5 py-1.5 rounded-lg num" style="border: 1px solid var(--border-strong); background: var(--card-inner); font-weight: 600; color: var(--text);"></select>
           </div>
+          <div id="budgetMonthlyMeta" class="text-[11px] mb-3" style="color: var(--text-muted); font-weight: 500;"></div>
           <div id="budgetMonthlyList" class="space-y-4"></div>
         </div>
         <div>
-          <div class="flex items-baseline justify-between mb-3">
+          <div class="flex items-center justify-between gap-2 mb-1">
             <div class="text-sm" style="font-weight: 700; color: var(--text-dim);">Yearly</div>
-            <div id="budgetYearlyMeta" class="text-[11px]" style="color: var(--text-muted); font-weight: 500;"></div>
+            <select id="budgetYearSelect" class="text-[12px] px-2.5 py-1.5 rounded-lg num" style="border: 1px solid var(--border-strong); background: var(--card-inner); font-weight: 600; color: var(--text);"></select>
           </div>
+          <div id="budgetYearlyMeta" class="text-[11px] mb-3" style="color: var(--text-muted); font-weight: 500;"></div>
           <div id="budgetYearlyList" class="space-y-4"></div>
         </div>
       </div>
       <div class="mt-5 pt-4 flex items-center justify-between" style="border-top: 1px solid var(--border);">
-        <span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">Unbudgeted spend · this month</span>
+        <span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">Unbudgeted spend · selected month</span>
         <span id="budgetUnbudgeted" class="num text-sm" style="font-weight: 700; color: var(--text-dim);"></span>
       </div>
     </div>
@@ -837,18 +839,25 @@ function renderBreakdown(elId, items, unit) {
 renderBreakdown('incomeList', DATA.income, '€');
 renderBreakdown('expenseList', DATA.expense, '€');
 // ── Budgets ───────────────────────────────────────────────────
+// History-based: Code.gs sends the last 12 months (Monthly budgets)
+// and last 5 years (Yearly budgets) per category, computed fresh from
+// permanent transaction dates. The dropdowns just pick which already-
+// loaded period to display — no reload needed to look at a past month,
+// even one the dashboard was never opened during.
 {
   const statusColor = { ok: '#22c55e', near: '#eab308', over: '#ef4444' };
   const statusPill  = { ok: 'pill-green', near: 'pill-gold', over: 'pill-red' };
   const statusLabel = { ok: 'On track', near: 'Near limit', over: 'Over budget' };
-  function renderBudgetList(elId, metaId, rows, periodLabel) {
-    const metaEl = document.getElementById(metaId);
+  const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const monthPeriodLabel = mk => {
+    const [y, m] = mk.split('-').map(Number);
+    return MONTH_ABBR[m - 1] + " '" + String(y).slice(-2);
+  };
+  function renderBudgetList(elId, rows) {
     if (!rows.length) {
-      document.getElementById(elId).innerHTML = '<div class="text-sm" style="color: var(--text-muted);">No ' + periodLabel.toLowerCase() + ' budgets set.</div>';
-      if (metaEl) metaEl.textContent = '';
+      document.getElementById(elId).innerHTML = '<div class="text-sm" style="color: var(--text-muted);">No budgets set for this period.</div>';
       return;
     }
-    if (metaEl) metaEl.textContent = rows.length + (rows.length === 1 ? ' category' : ' categories');
     document.getElementById(elId).innerHTML = rows.map(r => {
       const barPct = Math.min(r.pct, 100);
       const color = statusColor[r.status] || '#94a3b8';
@@ -866,10 +875,42 @@ renderBreakdown('expenseList', DATA.expense, '€');
         </div>`;
     }).join('');
   }
-  const budget = DATA.budget || { monthly: [], yearly: [], unbudgeted: 0 };
-  renderBudgetList('budgetMonthlyList', 'budgetMonthlyMeta', budget.monthly, 'Monthly');
-  renderBudgetList('budgetYearlyList', 'budgetYearlyMeta', budget.yearly, 'Yearly');
-  document.getElementById('budgetUnbudgeted').textContent = fmtINR(budget.unbudgeted || 0);
+  // Pulls out the {category, budgeted, actual, pct, status} row for one
+  // period key from a [{category, history:[...]}, ...] list.
+  function rowsForPeriod(list, periodKey) {
+    return list
+      .map(b => {
+        const h = b.history.find(x => x.period === periodKey);
+        return h ? { category: b.category, budgeted: h.budgeted, actual: h.actual, pct: h.pct, status: h.status } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.pct - a.pct);
+  }
+  const budget = DATA.budget || { months: [], years: [], monthly: [], yearly: [], unbudgeted: [] };
+  const monthSelect = document.getElementById('budgetMonthSelect');
+  const yearSelect  = document.getElementById('budgetYearSelect');
+  monthSelect.innerHTML = budget.months.map(mk => `<option value="${mk}">${monthPeriodLabel(mk)}</option>`).join('');
+  yearSelect.innerHTML  = budget.years.map(yk => `<option value="${yk}">${yk}</option>`).join('');
+  if (budget.months.length) monthSelect.value = budget.months[budget.months.length - 1]; // default: current month
+  if (budget.years.length)  yearSelect.value  = budget.years[budget.years.length - 1];   // default: current year
+  function renderMonthly() {
+    const mk = monthSelect.value;
+    const rows = rowsForPeriod(budget.monthly, mk);
+    document.getElementById('budgetMonthlyMeta').textContent = rows.length + (rows.length === 1 ? ' category' : ' categories');
+    renderBudgetList('budgetMonthlyList', rows);
+    const ub = (budget.unbudgeted || []).find(u => u.period === mk);
+    document.getElementById('budgetUnbudgeted').textContent = fmtINR(ub ? ub.amt : 0);
+  }
+  function renderYearly() {
+    const yk = yearSelect.value;
+    const rows = rowsForPeriod(budget.yearly, yk);
+    document.getElementById('budgetYearlyMeta').textContent = rows.length + (rows.length === 1 ? ' category' : ' categories');
+    renderBudgetList('budgetYearlyList', rows);
+  }
+  monthSelect.addEventListener('change', renderMonthly);
+  yearSelect.addEventListener('change', renderYearly);
+  renderMonthly();
+  renderYearly();
 }
 // ── Passive Income (Wallet) ───────────────────────────────────
 {
