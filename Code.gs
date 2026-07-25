@@ -551,13 +551,40 @@ function isActive(row) {
   if (typeof v === 'boolean') return v;
   return String(v).trim().toUpperCase() === 'TRUE';
 }
+// Account name -> 'EUR'/'INR', built from the Account sheet's own Currency
+// column (the same column already trusted everywhere else in the
+// dashboard for balances). Used to determine a transaction's real
+// currency by which account it was made from, rather than trusting the
+// Transactions sheet's own per-row Currency column — that column can be
+// mis-set on individual rows (same class of issue already documented for
+// the Remittance sheet's Currency column), which would otherwise silently
+// mix EUR and INR expenses together as if they were the same currency.
+function buildAccountCurrencyMap(accounts) {
+  const map = {};
+  accounts.forEach(a => {
+    const name = String(a.Account || '').trim();
+    if (!name) return;
+    map[name] = isEur(a.Currency) ? 'EUR' : 'INR';
+  });
+  return map;
+}
 function budgetBreakdown(ss, accounts, txns, walletTxns) {
   const budgetRows = readSheet(ss, SHEETS.BUDGETS);
   const rate = latestEurRate(accounts);
   const now = new Date();
   const tz  = Session.getScriptTimeZone();
+  const acctCurrency = buildAccountCurrencyMap(accounts);
 
-  function collect(rows, dateFn) {
+  // useAccountLookup: true for this sheet's own Transactions, where the
+  // Account column matches a row on the Account sheet, so the account's
+  // true currency can be looked up directly. Falls back to the row's own
+  // Currency column if the account name isn't found there (e.g. a brand
+  // new account not yet added to the Account sheet). Wallet transactions
+  // reference Wallet-internal account names that don't appear on the
+  // (main-sheet) Account tab at all, so they always use their own
+  // Currency column — there's no independent reference to cross-check
+  // against for those.
+  function collect(rows, dateFn, useAccountLookup) {
     const out = [];
     rows.forEach(t => {
       if (String(t.Type || '').trim().toLowerCase() !== 'expense') return;
@@ -565,13 +592,16 @@ function budgetBreakdown(ss, accounts, txns, walletTxns) {
       if (!d) return;
       const amt = num(t.Expense) || num(t.Amount);
       if (!amt) return;
-      const inr = isEur(t.Currency) ? amt * rate : amt;
+      const acctName = String(t.Account || '').trim();
+      const looked = useAccountLookup ? acctCurrency[acctName] : null;
+      const eur = looked ? (looked === 'EUR') : isEur(t.Currency);
+      const inr = eur ? amt * rate : amt;
       out.push({ cat: String(t['Txn_Category'] || '').trim() || 'Uncategorized', date: d, inr: inr });
     });
     return out;
   }
-  const expenses = collect(txns, d => (d instanceof Date ? d : null))
-    .concat(collect(walletTxns, parseWalletDate));
+  const expenses = collect(txns, d => (d instanceof Date ? d : null), true)
+    .concat(collect(walletTxns, parseWalletDate, false));
 
   const budgets = budgetRows
     .filter(isActive)
