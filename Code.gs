@@ -198,7 +198,15 @@ function readSheet(ss, name) {
 // ============================================================
 // HELPERS
 // ============================================================
-function isEur(c) { return EUR_CCYS.indexOf(String(c || '').trim()) >= 0; }
+// Case-insensitive on purpose: manually typed cells ("eur", "Eur ", "EURO",
+// "euro") are common, and the old exact-match-against-4-fixed-casings check
+// silently treated anything outside those 4 spellings as INR — e.g. typing
+// "eur" (all lowercase) into a Currency cell would NOT have matched 'EUR',
+// 'Eur', 'Euro', or 'EURO' and would fall through as INR every time.
+function isEur(c) {
+  const s = String(c || '').trim().toUpperCase();
+  return s === 'EUR' || s === 'EURO';
+}
 function num(v)   { const n = Number(v); return isNaN(n) ? 0 : n; }
 function includeInNetWorth(row) {
   // Reads column F "Include in Net Worth" — accepts TRUE (boolean) or 'TRUE' (string)
@@ -559,10 +567,20 @@ function isActive(row) {
 // mis-set on individual rows (same class of issue already documented for
 // the Remittance sheet's Currency column), which would otherwise silently
 // mix EUR and INR expenses together as if they were the same currency.
+// Normalizes an account name for matching between the Account sheet and
+// the Transactions "Account" column — case-insensitive, whitespace
+// collapsed/trimmed — so a stray double-space, trailing space, or casing
+// difference between the two sheets doesn't silently break the lookup
+// (which would otherwise fall back to the Transactions row's own,
+// potentially mislabeled, Currency column and reproduce the exact bug
+// this map exists to fix).
+function normalizeAcctName(s) {
+  return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
 function buildAccountCurrencyMap(accounts) {
   const map = {};
   accounts.forEach(a => {
-    const name = String(a.Account || '').trim();
+    const name = normalizeAcctName(a.Account);
     if (!name) return;
     map[name] = isEur(a.Currency) ? 'EUR' : 'INR';
   });
@@ -592,8 +610,15 @@ function budgetBreakdown(ss, accounts, txns, walletTxns) {
       if (!d) return;
       const amt = num(t.Expense) || num(t.Amount);
       if (!amt) return;
-      const acctName = String(t.Account || '').trim();
+      const acctName = normalizeAcctName(t.Account);
       const looked = useAccountLookup ? acctCurrency[acctName] : null;
+      if (useAccountLookup && acctName && !looked) {
+        // Visible in Apps Script's Executions log — if this ever fires,
+        // the Account sheet has no matching name for this transaction's
+        // Account column, so it silently fell back to that row's own
+        // Currency value instead of the looked-up one.
+        Logger.log('budgetBreakdown: no Account-sheet currency match for "' + t.Account + '" (txn ' + (t.ID || '') + ', cat "' + t['Txn_Category'] + '") — used Transactions Currency column ("' + t.Currency + '") instead.');
+      }
       const eur = looked ? (looked === 'EUR') : isEur(t.Currency);
       const inr = eur ? amt * rate : amt;
       out.push({ cat: String(t['Txn_Category'] || '').trim() || 'Uncategorized', date: d, inr: inr });
