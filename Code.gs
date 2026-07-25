@@ -228,7 +228,10 @@ function fillCategory(rows) {
   });
 }
 function latestEurRate(accounts) {
-  const rates = accounts.map(a => num(a['Euro rate'])).filter(r => r > 0);
+  const rates = accounts
+    .filter(a => isEur(a.Currency))
+    .map(a => num(a['Euro rate']))
+    .filter(r => r > 0);
   return rates.length ? rates[rates.length - 1] : 112;
 }
 // ============================================================
