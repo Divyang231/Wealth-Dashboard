@@ -477,27 +477,29 @@
   </footer>
 </main>
 <!-- ═══════════════════════════════════════════════════════
-     MAINTENANCE CHECKLIST DRAWER  —  recurring admin to-dos
-     (Monthly / Quarterly / Half-Yearly / Yearly). Hidden by default,
-     opened via the footer link. Source: "Maintenance" tab (task list)
-     + "Maintenance Log" tab (completion history — written only by
-     the Mark done button, never hand-edited).
+     MAINTENANCE CHECKLIST — recurring admin to-dos (Monthly / Quarterly /
+     Half-Yearly / Yearly). Hidden by default, opened via the footer link
+     as a full-screen overlay (same page/URL, not a separate route).
+     Source: "Maintenance" tab (task list) + "Maintenance Log" tab
+     (completion history — written only by the Mark done button, never
+     hand-edited).
 ════════════════════════════════════════════════════════ -->
-<div id="maintOverlay" onclick="closeMaintDrawer()" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:60;"></div>
-<div id="maintDrawer" style="display:none; position:fixed; top:0; right:0; bottom:0; width:100%; max-width:420px; background:var(--card); z-index:61; box-shadow:-8px 0 24px rgba(0,0,0,0.15); overflow-y:auto; transform:translateX(100%); transition:transform 0.25s ease;">
-  <div class="p-5 sm:p-7">
+<div id="maintDrawer" style="display:none; position:fixed; inset:0; background:var(--bg); z-index:61; overflow-y:auto;">
+  <div class="max-w-3xl mx-auto p-5 sm:p-7">
     <div class="flex items-center justify-between gap-3 mb-5">
-      <div><div class="section-label">Administration</div><div class="text-2xl mt-0.5" style="font-weight: 800;">Maintenance checklist</div></div>
-      <button onclick="closeMaintDrawer()" class="text-xl leading-none px-2 py-1 rounded-full" style="color: var(--text-muted);" aria-label="Close">&times;</button>
+      <button onclick="closeMaintDrawer()" class="text-[12px] px-3 py-1.5 rounded-full" style="background: var(--card); color: var(--text-dim); font-weight: 700;">&larr; Back to dashboard</button>
     </div>
-    <div id="maintTabButtons" class="flex items-center gap-1 p-1 rounded-full mb-5" style="background: var(--card-inner);">
+    <div class="mb-5"><div class="section-label">Administration</div><div class="text-2xl mt-0.5" style="font-weight: 800;">Maintenance checklist</div></div>
+    <div id="maintTabButtons" class="flex items-center gap-1 p-1 rounded-full mb-5" style="background: var(--card-inner); width: fit-content;">
       <button class="tab-btn active" onclick="setMaintTab('due', this)">Due now</button>
       <button class="tab-btn" onclick="setMaintTab('missed', this)">Missed</button>
       <button class="tab-btn" onclick="setMaintTab('upcoming', this)">Upcoming</button>
       <button class="tab-btn" onclick="setMaintTab('done', this)">Done</button>
     </div>
-    <div id="maintList" class="space-y-1"></div>
-    <div id="maintEmpty" class="text-sm" style="display:none; color: var(--text-muted);">Nothing here.</div>
+    <div class="card p-5 sm:p-7">
+      <div id="maintList" class="space-y-1"></div>
+      <div id="maintEmpty" class="text-sm" style="display:none; color: var(--text-muted);">Nothing here.</div>
+    </div>
   </div>
 </div>
 <script>
@@ -940,10 +942,25 @@ renderBreakdown('expenseList', DATA.expense, '€');
   const maintPillLabel = { due: 'Due', missed: 'Missed', upcoming: 'Upcoming', done: 'Done' };
   let maintTab = 'due';
 
+  function fmtDueDate(iso) {
+    const d = parseISODate(iso);
+    return MONTH_ABBR_SHORT[d.getMonth()] + ' ' + d.getDate();
+  }
+  const MONTH_ABBR_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
   function renderMaint() {
-    const rows = (maint[maintBucket[maintTab]] || [])
-      .slice()
-      .sort((a, b) => (a.category + a.task + a.period).localeCompare(b.category + b.task + b.period));
+    let rows = (maint[maintBucket[maintTab]] || []).slice();
+    if (maintTab === 'due') {
+      // Overdue first (most overdue first), then dated-but-not-yet-due (soonest first), then no due date.
+      rows.sort((a, b) => {
+        if (!!a.overdue !== !!b.overdue) return a.overdue ? -1 : 1;
+        if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+        if (a.dueDate !== b.dueDate) return a.dueDate ? -1 : 1;
+        return (a.category + a.task).localeCompare(b.category + b.task);
+      });
+    } else {
+      rows.sort((a, b) => (a.category + a.task + a.period).localeCompare(b.category + b.task + b.period));
+    }
     const listEl  = document.getElementById('maintList');
     const emptyEl = document.getElementById('maintEmpty');
     if (!rows.length) {
@@ -952,15 +969,29 @@ renderBreakdown('expenseList', DATA.expense, '€');
       return;
     }
     emptyEl.style.display = 'none';
-    listEl.innerHTML = rows.map((r, i) => {
-      const action = maintTab === 'due'
-        ? `<button onclick="markMaintDone(${i}, this)" class="text-[11px] px-3 py-1.5 rounded-full shrink-0" style="background: var(--dark); color: #fff; font-weight: 700;">Mark done</button>`
-        : `<span class="pill ${maintPillClass[maintTab]} shrink-0" style="font-size: 10px; padding: 2px 8px;">${maintPillLabel[maintTab]}</span>`;
+    listEl.innerHTML = rows.map((r) => {
+      let action;
+      if (maintTab === 'due') {
+        const key = encodeURIComponent(r.task) + '|' + encodeURIComponent(r.period);
+        action = `<button onclick="markMaintDone('${key}', this)" class="text-[11px] px-3 py-1.5 rounded-full shrink-0" style="background: var(--dark); color: #fff; font-weight: 700;">Mark done</button>`;
+      } else {
+        action = `<span class="pill ${maintPillClass[maintTab]} shrink-0" style="font-size: 10px; padding: 2px 8px;">${maintPillLabel[maintTab]}</span>`;
+      }
+      let dueHtml = '';
+      if (maintTab === 'due' && r.dueDate) {
+        dueHtml = r.overdue
+          ? `<span class="pill pill-red" style="font-size: 10px; padding: 1px 8px; margin-left: 6px;">Overdue since ${fmtDueDate(r.dueDate)}</span>`
+          : `<span class="pill pill-neutral" style="font-size: 10px; padding: 1px 8px; margin-left: 6px;">Due by ${fmtDueDate(r.dueDate)}</span>`;
+      }
+      const descHtml = r.description
+        ? `<div class="text-[11px] mt-1" style="color: var(--text-muted); opacity: 0.85;">${r.description}</div>`
+        : '';
       return `
         <div class="flex items-center justify-between gap-3 py-2.5" style="border-bottom: 1px solid var(--border);">
           <div class="min-w-0">
             <div class="text-sm truncate" style="font-weight: 600;">${r.task}</div>
-            <div class="text-[11px]" style="color: var(--text-muted);">${r.category} · ${r.frequency} · ${r.label}</div>
+            <div class="text-[11px]" style="color: var(--text-muted);">${r.category} · ${r.frequency} · ${r.label}${dueHtml}</div>
+            ${descHtml}
           </div>
           ${action}
         </div>`;
@@ -974,12 +1005,12 @@ renderBreakdown('expenseList', DATA.expense, '€');
     renderMaint();
   };
 
-  // index refers to position within the currently-rendered (sorted) due-now list
-  window.markMaintDone = function(idx, btnEl) {
-    const rows = maint.dueNow
-      .slice()
-      .sort((a, b) => (a.category + a.task + a.period).localeCompare(b.category + b.task + b.period));
-    const item = rows[idx];
+  // key is "encodedTask|encodedPeriod" — a stable identity lookup, independent
+  // of whatever order the due-now list happens to be sorted/rendered in.
+  window.markMaintDone = function(key, btnEl) {
+    const parts = key.split('|');
+    const task = decodeURIComponent(parts[0]), period = decodeURIComponent(parts[1]);
+    const item = maint.dueNow.find(r => r.task === task && r.period === period);
     if (!item) return;
     btnEl.disabled = true;
     btnEl.textContent = 'Saving...';
@@ -1000,21 +1031,17 @@ renderBreakdown('expenseList', DATA.expense, '€');
       .markMaintenanceDone(item.task, item.period);
   };
 
-  // Drawer is hidden by default (footer link only) — content is rendered
-  // once up front since DATA is already loaded, just not shown until opened.
+  // Full-screen view, same page/URL — hidden by default (footer link only).
+  // Content is rendered once up front since DATA is already loaded, just
+  // not shown until opened.
   window.openMaintDrawer = function() {
-    document.getElementById('maintOverlay').style.display = 'block';
-    const drawer = document.getElementById('maintDrawer');
-    drawer.style.display = 'block';
-    requestAnimationFrame(() => { drawer.style.transform = 'translateX(0)'; });
+    document.getElementById('maintDrawer').style.display = 'block';
+    window.scrollTo(0, 0);
     document.body.style.overflow = 'hidden';
   };
   window.closeMaintDrawer = function() {
-    const drawer = document.getElementById('maintDrawer');
-    drawer.style.transform = 'translateX(100%)';
-    document.getElementById('maintOverlay').style.display = 'none';
+    document.getElementById('maintDrawer').style.display = 'none';
     document.body.style.overflow = '';
-    setTimeout(() => { drawer.style.display = 'none'; }, 250);
   };
 
   renderMaint();

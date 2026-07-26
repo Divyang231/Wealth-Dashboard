@@ -726,6 +726,16 @@ const MAINT_MONTH_ABBR   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep
 
 function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
+// Unlike Budgets' isActive() (opt-in, blank = inactive), Maintenance tasks
+// default to active — you're adding a task to track it, not to hide it.
+// Only an explicit FALSE excludes a task.
+function isMaintActive(row) {
+  const v = row.Active;
+  if (v === '' || v === null || v === undefined) return true;
+  if (typeof v === 'boolean') return v;
+  return String(v).trim().toUpperCase() !== 'FALSE';
+}
+
 function normMaintFreq(f) {
   const s = String(f || '').trim().toLowerCase();
   if (s.indexOf('quarter') === 0) return 'quarterly';
@@ -752,6 +762,35 @@ function maintPeriodLabel(freqNorm, key) {
   return key; // yearly
 }
 
+// Computes the strict due date (a JS Date) for a task's CURRENT period, or
+// null if the task has no Due Month/Due Day set (meaning: no strict due
+// date, just "sometime this period"). Monthly tasks ignore Due Month
+// entirely — the period IS the month, so only Due Day matters. For
+// Quarterly/Half-Yearly/Yearly, Due Month is an absolute calendar month
+// (1-12); if left blank while Due Day is set, it defaults to the last
+// calendar month of that period (e.g. a Quarterly task due-day-only
+// defaults to the quarter's closing month).
+function maintDueDate(freqNorm, periodKey, dueMonth, dueDay) {
+  if (!dueMonth && !dueDay) return null;
+  const day = dueDay || 1;
+  if (freqNorm === 'monthly') {
+    const p = periodKey.split('-');
+    return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, day);
+  }
+  if (freqNorm === 'yearly') {
+    const y = parseInt(periodKey, 10);
+    const m = dueMonth ? dueMonth - 1 : 11; // default December
+    return new Date(y, m, day);
+  }
+  // quarterly / half-yearly — periodKey is 'YYYY-Qn' or 'YYYY-Hn'
+  const p = periodKey.split('-');
+  const y = parseInt(p[0], 10);
+  const n = parseInt(p[1].slice(1), 10); // quarter or half number
+  const stepMonths = freqNorm === 'quarterly' ? 3 : 6;
+  const m = dueMonth ? (dueMonth - 1) : (n * stepMonths - 1); // default: period's closing month
+  return new Date(y, m, day);
+}
+
 function maintenanceBreakdown(ss) {
   const taskRows = readSheet(ss, SHEETS.MAINTENANCE);
   const logRows  = readSheet(ss, SHEETS.MAINTENANCE_LOG);
@@ -766,11 +805,14 @@ function maintenanceBreakdown(ss) {
   });
 
   const tasks = taskRows
-    .filter(isActive)
+    .filter(isMaintActive)
     .map(r => ({
-      name:     String(r.Task || '').trim(),
-      freqNorm: normMaintFreq(r.Frequency),
-      category: String(r.Category || '').trim() || 'General'
+      name:        String(r.Task || '').trim(),
+      freqNorm:    normMaintFreq(r.Frequency),
+      category:    String(r.Category || '').trim() || 'General',
+      description: String(r['Detailed description'] || '').trim(),
+      dueMonth:    parseInt(r['Due Month'], 10) || null,
+      dueDay:      parseInt(r['Due Day'], 10) || null
     }))
     .filter(t => t.name);
 
@@ -785,7 +827,7 @@ function maintenanceBreakdown(ss) {
     const freqLabel   = MAINT_FREQ_LABEL[t.freqNorm];
 
     function mk(period) {
-      return { task: t.name, category: t.category, frequency: freqLabel, period: period, label: maintPeriodLabel(t.freqNorm, period) };
+      return { task: t.name, category: t.category, frequency: freqLabel, description: t.description, period: period, label: maintPeriodLabel(t.freqNorm, period) };
     }
 
     // Past periods (excluding current), oldest first — any without a log entry is Missed.
@@ -794,8 +836,15 @@ function maintenanceBreakdown(ss) {
       if (!doneSet[t.name + '|' + key]) missed.push(mk(key));
     }
 
-    if (doneSet[t.name + '|' + currentKey]) done.push(mk(currentKey));
-    else dueNow.push(mk(currentKey));
+    if (doneSet[t.name + '|' + currentKey]) {
+      done.push(mk(currentKey));
+    } else {
+      const item = mk(currentKey);
+      const dueDate = maintDueDate(t.freqNorm, currentKey, t.dueMonth, t.dueDay);
+      item.dueDate = dueDate ? Utilities.formatDate(dueDate, Session.getScriptTimeZone(), 'yyyy-MM-dd') : null;
+      item.overdue = dueDate ? (now > dueDate) : false;
+      dueNow.push(item);
+    }
 
     upcoming.push(mk(nextKey)); // preview only — no action possible yet
   });
