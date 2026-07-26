@@ -816,7 +816,7 @@ function maintenanceBreakdown(ss) {
     }))
     .filter(t => t.name);
 
-  const dueNow = [], missed = [], upcoming = [], done = [];
+  const dueNow = [], overdue = [], upcoming = [], done = [];
 
   tasks.forEach(t => {
     const stepMonths  = MAINT_STEP_MONTHS[t.freqNorm];
@@ -826,30 +826,38 @@ function maintenanceBreakdown(ss) {
     const nextKey     = maintKeyAt(t.freqNorm, boundaryIdx + stepMonths);
     const freqLabel   = MAINT_FREQ_LABEL[t.freqNorm];
 
-    function mk(period) {
-      return { task: t.name, category: t.category, frequency: freqLabel, description: t.description, period: period, label: maintPeriodLabel(t.freqNorm, period) };
+    function mk(period, extra) {
+      const base = { task: t.name, category: t.category, frequency: freqLabel, description: t.description, period: period, label: maintPeriodLabel(t.freqNorm, period) };
+      return extra ? Object.assign(base, extra) : base;
     }
 
-    // Past periods (excluding current), oldest first — any without a log entry is Missed.
+    // Past periods (excluding current), oldest first — a period that's fully
+    // elapsed without a log entry is always Overdue, actionable via Mark done.
     for (let i = lookback - 1; i >= 1; i--) {
       const key = maintKeyAt(t.freqNorm, boundaryIdx - i * stepMonths);
-      if (!doneSet[t.name + '|' + key]) missed.push(mk(key));
+      if (!doneSet[t.name + '|' + key]) overdue.push(mk(key));
     }
 
     if (doneSet[t.name + '|' + currentKey]) {
       done.push(mk(currentKey));
+      upcoming.push(mk(nextKey)); // now that current is settled, preview what's next
     } else {
-      const item = mk(currentKey);
-      const dueDate = maintDueDate(t.freqNorm, currentKey, t.dueMonth, t.dueDay);
-      item.dueDate = dueDate ? Utilities.formatDate(dueDate, Session.getScriptTimeZone(), 'yyyy-MM-dd') : null;
-      item.overdue = dueDate ? (now > dueDate) : false;
-      dueNow.push(item);
+      const dueDate    = maintDueDate(t.freqNorm, currentKey, t.dueMonth, t.dueDay);
+      const dueDateStr = dueDate ? Utilities.formatDate(dueDate, Session.getScriptTimeZone(), 'yyyy-MM-dd') : null;
+      if (dueDate && now > dueDate) {
+        // Its own due date has already passed this period — overdue, not just "due".
+        overdue.push(mk(currentKey, { dueDate: dueDateStr, current: true }));
+      } else if (dueDate && (dueDate.getFullYear() * 12 + dueDate.getMonth()) > nowIdx) {
+        // Due date exists but falls in a future month — not relevant yet, don't clutter Due now.
+        upcoming.push(mk(currentKey, { dueDate: dueDateStr }));
+      } else {
+        // No due date at all, or due date's month is the current month — actionable now.
+        dueNow.push(mk(currentKey, { dueDate: dueDateStr }));
+      }
     }
-
-    upcoming.push(mk(nextKey)); // preview only — no action possible yet
   });
 
-  return { dueNow: dueNow, missed: missed, upcoming: upcoming, done: done };
+  return { dueNow: dueNow, overdue: overdue, upcoming: upcoming, done: done };
 }
 
 // Called from Index.html via google.script.run when "Mark done" is clicked.

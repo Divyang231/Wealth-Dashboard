@@ -491,8 +491,8 @@
     </div>
     <div class="mb-5"><div class="section-label">Administration</div><div class="text-2xl mt-0.5" style="font-weight: 800;">Maintenance checklist</div></div>
     <div id="maintTabButtons" class="flex items-center gap-1 p-1 rounded-full mb-5" style="background: var(--card-inner); width: fit-content;">
-      <button class="tab-btn active" onclick="setMaintTab('due', this)">Due now</button>
-      <button class="tab-btn" onclick="setMaintTab('missed', this)">Missed</button>
+      <button class="tab-btn active" onclick="setMaintTab('overdue', this)">Overdue</button>
+      <button class="tab-btn" onclick="setMaintTab('due', this)">Due now</button>
       <button class="tab-btn" onclick="setMaintTab('upcoming', this)">Upcoming</button>
       <button class="tab-btn" onclick="setMaintTab('done', this)">Done</button>
     </div>
@@ -930,30 +930,54 @@ renderBreakdown('expenseList', DATA.expense, '€');
   renderYearly();
 }
 // ── Maintenance checklist ────────────────────────────────────
-// Server sends every bucket fully computed (Due now / Missed / Upcoming /
+// Server sends every bucket fully computed (Due now / Overdue / Upcoming /
 // Done) — tabs here just switch which already-loaded list is shown, no
 // reload. "Mark done" writes through google.script.run (same pattern as
 // the AI Advisor button) then optimistically moves the item client-side
-// from Due -> Done, no full refetch needed.
+// into Done, no full refetch needed. Overdue entries for the same task
+// (e.g. 3 missed months in a row) are bundled into one collapsible row
+// to keep the list from getting noisy — expand it to mark individual
+// periods done, a week (or a year) late is fine.
 {
-  const maint = DATA.maintenance || { dueNow: [], missed: [], upcoming: [], done: [] };
-  const maintBucket = { due: 'dueNow', missed: 'missed', upcoming: 'upcoming', done: 'done' };
-  const maintPillClass = { due: 'pill-gold', missed: 'pill-red', upcoming: 'pill-neutral', done: 'pill-green' };
-  const maintPillLabel = { due: 'Due', missed: 'Missed', upcoming: 'Upcoming', done: 'Done' };
-  let maintTab = 'due';
+  const maint = DATA.maintenance || { dueNow: [], overdue: [], upcoming: [], done: [] };
+  const maintBucket = { due: 'dueNow', overdue: 'overdue', upcoming: 'upcoming', done: 'done' };
+  const maintPillClass = { due: 'pill-gold', overdue: 'pill-red', upcoming: 'pill-neutral', done: 'pill-green' };
+  const maintPillLabel = { due: 'Due', overdue: 'Overdue', upcoming: 'Upcoming', done: 'Done' };
+  let maintTab = 'overdue';
+  const maintExpanded = new Set(); // task names currently expanded in the Overdue tab
 
+  const MONTH_ABBR_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   function fmtDueDate(iso) {
     const d = parseISODate(iso);
     return MONTH_ABBR_SHORT[d.getMonth()] + ' ' + d.getDate();
   }
-  const MONTH_ABBR_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function maintKey(task, period) {
+    return encodeURIComponent(task) + '|' + encodeURIComponent(period);
+  }
 
   function renderMaint() {
-    let rows = (maint[maintBucket[maintTab]] || []).slice();
+    const listEl  = document.getElementById('maintList');
+    const emptyEl = document.getElementById('maintEmpty');
+    const rows = (maint[maintBucket[maintTab]] || []).slice();
+    if (!rows.length) {
+      listEl.innerHTML = '';
+      emptyEl.style.display = 'block';
+      return;
+    }
+    emptyEl.style.display = 'none';
+
+    if (maintTab === 'overdue') {
+      listEl.innerHTML = renderOverdueGroups(rows);
+      return;
+    }
+
+    if (maintTab === 'done') {
+      listEl.innerHTML = renderDoneGroups(rows);
+      return;
+    }
+
     if (maintTab === 'due') {
-      // Overdue first (most overdue first), then dated-but-not-yet-due (soonest first), then no due date.
       rows.sort((a, b) => {
-        if (!!a.overdue !== !!b.overdue) return a.overdue ? -1 : 1;
         if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
         if (a.dueDate !== b.dueDate) return a.dueDate ? -1 : 1;
         return (a.category + a.task).localeCompare(b.category + b.task);
@@ -961,42 +985,119 @@ renderBreakdown('expenseList', DATA.expense, '€');
     } else {
       rows.sort((a, b) => (a.category + a.task + a.period).localeCompare(b.category + b.task + b.period));
     }
-    const listEl  = document.getElementById('maintList');
-    const emptyEl = document.getElementById('maintEmpty');
-    if (!rows.length) {
-      listEl.innerHTML = '';
-      emptyEl.style.display = 'block';
-      return;
+    listEl.innerHTML = rows.map(r => renderMaintRow(r, maintTab)).join('');
+  }
+
+  // A single task/period row. `action` is either a Mark done button (Due
+  // now, or a single/expanded Overdue period) or a plain status pill
+  // (Upcoming, Done).
+  function renderMaintRow(r, tab, opts) {
+    opts = opts || {};
+    let action;
+    if (tab === 'due' || tab === 'overdue') {
+      action = `<button onclick="markMaintDone('${maintKey(r.task, r.period)}', this)" class="text-[11px] px-3 py-1.5 rounded-full shrink-0" style="background: var(--dark); color: #fff; font-weight: 700;">Mark done</button>`;
+    } else {
+      action = `<span class="pill ${maintPillClass[tab]} shrink-0" style="font-size: 10px; padding: 2px 8px;">${maintPillLabel[tab]}</span>`;
     }
-    emptyEl.style.display = 'none';
-    listEl.innerHTML = rows.map((r) => {
-      let action;
-      if (maintTab === 'due') {
-        const key = encodeURIComponent(r.task) + '|' + encodeURIComponent(r.period);
-        action = `<button onclick="markMaintDone('${key}', this)" class="text-[11px] px-3 py-1.5 rounded-full shrink-0" style="background: var(--dark); color: #fff; font-weight: 700;">Mark done</button>`;
-      } else {
-        action = `<span class="pill ${maintPillClass[maintTab]} shrink-0" style="font-size: 10px; padding: 2px 8px;">${maintPillLabel[maintTab]}</span>`;
-      }
-      let dueHtml = '';
-      if (maintTab === 'due' && r.dueDate) {
-        dueHtml = r.overdue
-          ? `<span class="pill pill-red" style="font-size: 10px; padding: 1px 8px; margin-left: 6px;">Overdue since ${fmtDueDate(r.dueDate)}</span>`
-          : `<span class="pill pill-neutral" style="font-size: 10px; padding: 1px 8px; margin-left: 6px;">Due by ${fmtDueDate(r.dueDate)}</span>`;
-      }
-      const descHtml = r.description
-        ? `<div class="text-[11px] mt-1" style="color: var(--text-muted); opacity: 0.85;">${r.description}</div>`
+    let dueHtml = '';
+    if (r.dueDate) {
+      dueHtml = r.current && tab === 'overdue'
+        ? `<span class="pill pill-red" style="font-size: 10px; padding: 1px 8px; margin-left: 6px;">Overdue since ${fmtDueDate(r.dueDate)}</span>`
+        : (tab === 'due' ? `<span class="pill pill-neutral" style="font-size: 10px; padding: 1px 8px; margin-left: 6px;">Due by ${fmtDueDate(r.dueDate)}</span>` : '');
+    }
+    const descHtml = (r.description && !opts.nested)
+      ? `<div class="text-[11px] mt-1" style="color: var(--text-muted); opacity: 0.85;">${r.description}</div>`
+      : '';
+    const titleLine = opts.nested
+      ? `<div class="text-sm" style="font-weight: 600;">${r.label}</div>`
+      : `<div class="text-sm truncate" style="font-weight: 600;">${r.task}</div>`;
+    const metaLine = opts.nested
+      ? ''
+      : `<div class="text-[11px]" style="color: var(--text-muted);">${r.category} · ${r.frequency} · ${r.label}${dueHtml}</div>`;
+    return `
+      <div class="flex items-center justify-between gap-3 py-2.5" style="border-bottom: 1px solid var(--border); ${opts.nested ? 'padding-left: 20px;' : ''}">
+        <div class="min-w-0">
+          ${titleLine}
+          ${metaLine}
+          ${descHtml}
+        </div>
+        ${action}
+      </div>`;
+  }
+
+  // Groups Overdue rows by task. A task with only one overdue period renders
+  // as a normal row; 2+ periods collapse into one summary row with an
+  // "N overdue" badge, expandable to reveal each period individually.
+  function renderOverdueGroups(rows) {
+    const groups = {};
+    rows.forEach(r => {
+      if (!groups[r.task]) groups[r.task] = [];
+      groups[r.task].push(r);
+    });
+    const taskNames = Object.keys(groups).sort((a, b) => {
+      const ga = groups[a][0], gb = groups[b][0];
+      return (ga.category + a).localeCompare(gb.category + b);
+    });
+    return taskNames.map(task => {
+      const items = groups[task].sort((a, b) => a.period.localeCompare(b.period));
+      if (items.length === 1) return renderMaintRow(items[0], 'overdue');
+      const first = items[0];
+      const expanded = maintExpanded.has(task);
+      const descHtml = first.description
+        ? `<div class="text-[11px] mt-1" style="color: var(--text-muted); opacity: 0.85;">${first.description}</div>`
         : '';
+      const nestedRows = items.map(it => renderMaintRow(it, 'overdue', { nested: true })).join('');
       return `
-        <div class="flex items-center justify-between gap-3 py-2.5" style="border-bottom: 1px solid var(--border);">
-          <div class="min-w-0">
-            <div class="text-sm truncate" style="font-weight: 600;">${r.task}</div>
-            <div class="text-[11px]" style="color: var(--text-muted);">${r.category} · ${r.frequency} · ${r.label}${dueHtml}</div>
-            ${descHtml}
+        <div style="border-bottom: 1px solid var(--border);">
+          <div class="flex items-center justify-between gap-3 py-2.5 cursor-pointer" onclick="toggleMaintGroup('${encodeURIComponent(task)}')">
+            <div class="min-w-0">
+              <div class="text-sm truncate" style="font-weight: 600;">${first.task}</div>
+              <div class="text-[11px]" style="color: var(--text-muted);">${first.category} · ${first.frequency}</div>
+              ${descHtml}
+            </div>
+            <span class="pill pill-red shrink-0" style="font-size: 10px; padding: 2px 8px;">${items.length} overdue ${expanded ? '&#9650;' : '&#9660;'}</span>
           </div>
-          ${action}
+          <div style="display:${expanded ? 'block' : 'none'};">${nestedRows}</div>
         </div>`;
     }).join('');
   }
+
+  // Done only ever holds one entry per task (the current period), so there's
+  // no repeat-period noise to bundle like Overdue — instead it groups by
+  // Category into labeled sections, which is what actually keeps a growing
+  // Done list scannable.
+  function renderDoneGroups(rows) {
+    const groups = {};
+    rows.forEach(r => {
+      const cat = r.category || 'General';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(r);
+    });
+    const cats = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+    return cats.map(cat => {
+      const items = groups[cat].sort((a, b) => a.task.localeCompare(b.task));
+      const rowsHtml = items.map(r => `
+        <div class="flex items-center justify-between gap-3 py-2" style="border-bottom: 1px solid var(--border);">
+          <div class="min-w-0">
+            <div class="text-sm truncate" style="font-weight: 600;">${r.task}</div>
+            <div class="text-[11px]" style="color: var(--text-muted);">${r.frequency} · ${r.label}</div>
+          </div>
+          <span class="pill pill-green shrink-0" style="font-size: 10px; padding: 2px 8px;">Done</span>
+        </div>`).join('');
+      return `
+        <div class="mb-1">
+          <div class="text-[11px] mt-3 mb-1.5" style="color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;">${cat} · ${items.length}</div>
+          ${rowsHtml}
+        </div>`;
+    }).join('');
+  }
+
+  window.toggleMaintGroup = function(encodedTask) {
+    const task = decodeURIComponent(encodedTask);
+    if (maintExpanded.has(task)) maintExpanded.delete(task);
+    else maintExpanded.add(task);
+    renderMaint();
+  };
 
   window.setMaintTab = function(tab, btn) {
     maintTab = tab;
@@ -1006,19 +1107,22 @@ renderBreakdown('expenseList', DATA.expense, '€');
   };
 
   // key is "encodedTask|encodedPeriod" — a stable identity lookup, independent
-  // of whatever order the due-now list happens to be sorted/rendered in.
+  // of whatever order/bucket (Due now or Overdue, flat or nested-in-a-group)
+  // the row happens to be rendered in.
   window.markMaintDone = function(key, btnEl) {
     const parts = key.split('|');
     const task = decodeURIComponent(parts[0]), period = decodeURIComponent(parts[1]);
-    const item = maint.dueNow.find(r => r.task === task && r.period === period);
+    let sourceArr = maint.dueNow;
+    let item = sourceArr.find(r => r.task === task && r.period === period);
+    if (!item) { sourceArr = maint.overdue; item = sourceArr.find(r => r.task === task && r.period === period); }
     if (!item) return;
     btnEl.disabled = true;
     btnEl.textContent = 'Saving...';
     google.script.run
       .withSuccessHandler(function() {
-        const realIdx = maint.dueNow.findIndex(r => r.task === item.task && r.period === item.period);
+        const realIdx = sourceArr.findIndex(r => r.task === item.task && r.period === item.period);
         if (realIdx > -1) {
-          const moved = maint.dueNow.splice(realIdx, 1)[0];
+          const moved = sourceArr.splice(realIdx, 1)[0];
           maint.done.push(moved);
         }
         renderMaint();
