@@ -762,16 +762,45 @@ function maintPeriodLabel(freqNorm, key) {
   return key; // yearly
 }
 
-// Computes the strict due date (a JS Date) for a task's CURRENT period, or
-// null if the task has no Due Month/Due Day set (meaning: no strict due
-// date, just "sometime this period"). Monthly tasks ignore Due Month
-// entirely — the period IS the month, so only Due Day matters. For
-// Quarterly/Half-Yearly/Yearly, Due Month is an absolute calendar month
-// (1-12); if left blank while Due Day is set, it defaults to the last
-// calendar month of that period (e.g. a Quarterly task due-day-only
-// defaults to the quarter's closing month).
+// The last calendar day of a period — used as the default deadline for tasks
+// with no explicit Due Month/Due Day (e.g. a Quarterly task with nothing set
+// is implicitly "due by the end of the quarter"). Every period aligns to
+// calendar boundaries, so this is always within the current calendar year.
+function periodEndDate(freqNorm, periodKey) {
+  if (freqNorm === 'monthly') {
+    const p = periodKey.split('-');
+    return new Date(parseInt(p[0], 10), parseInt(p[1], 10), 0); // last day of that month
+  }
+  if (freqNorm === 'yearly') {
+    return new Date(parseInt(periodKey, 10), 11, 31);
+  }
+  // quarterly / half-yearly — periodKey is 'YYYY-Qn' or 'YYYY-Hn'
+  const p = periodKey.split('-');
+  const y = parseInt(p[0], 10);
+  const n = parseInt(p[1].slice(1), 10); // quarter or half number
+  const stepMonths = freqNorm === 'quarterly' ? 3 : 6;
+  return new Date(y, n * stepMonths, 0); // last day of the period's closing month
+}
+
+// Computes the deadline (a JS Date) for a task's CURRENT period. If Due
+// Month/Due Day are set, that's the deadline. If not, falls back to the
+// period's own closing date — so every task always has a real deadline to
+// bucket against, not just the ones with explicit due fields.
+//
+// Due Month means different things depending on frequency:
+//   Monthly       — ignored entirely; the period IS the month, only Due Day matters.
+//   Yearly        — an absolute calendar month (1-12), e.g. 3 = March. There's
+//                   only one period per year, so "absolute month" and "month
+//                   within the period" are the same thing.
+//   Quarterly     — which month WITHIN the quarter (1, 2, or 3), NOT an
+//                   absolute calendar month. Due Month=2 means "the 2nd month
+//                   of whichever quarter is current" — Feb for Q1, May for Q2,
+//                   Aug for Q3, Nov for Q4 — so the same value correctly
+//                   shifts every quarter instead of only ever meaning one
+//                   fixed absolute month.
+//   Half-Yearly   — same idea, 1 through 6 (month within the half).
 function maintDueDate(freqNorm, periodKey, dueMonth, dueDay) {
-  if (!dueMonth && !dueDay) return null;
+  if (!dueMonth && !dueDay) return periodEndDate(freqNorm, periodKey);
   const day = dueDay || 1;
   if (freqNorm === 'monthly') {
     const p = periodKey.split('-');
@@ -787,7 +816,8 @@ function maintDueDate(freqNorm, periodKey, dueMonth, dueDay) {
   const y = parseInt(p[0], 10);
   const n = parseInt(p[1].slice(1), 10); // quarter or half number
   const stepMonths = freqNorm === 'quarterly' ? 3 : 6;
-  const m = dueMonth ? (dueMonth - 1) : (n * stepMonths - 1); // default: period's closing month
+  const relMonth = dueMonth ? Math.min(Math.max(dueMonth, 1), stepMonths) : stepMonths; // clamp 1..stepMonths; default = last month of period
+  const m = (n - 1) * stepMonths + relMonth - 1; // 0-indexed absolute month, shifts with whichever period is current
   return new Date(y, m, day);
 }
 
@@ -823,7 +853,6 @@ function maintenanceBreakdown(ss) {
     const lookback    = MAINT_LOOKBACK[t.freqNorm];
     const boundaryIdx = Math.floor(nowIdx / stepMonths) * stepMonths;
     const currentKey  = maintKeyAt(t.freqNorm, boundaryIdx);
-    const nextKey     = maintKeyAt(t.freqNorm, boundaryIdx + stepMonths);
     const freqLabel   = MAINT_FREQ_LABEL[t.freqNorm];
 
     function mk(period, extra) {
@@ -840,18 +869,19 @@ function maintenanceBreakdown(ss) {
 
     if (doneSet[t.name + '|' + currentKey]) {
       done.push(mk(currentKey));
-      upcoming.push(mk(nextKey)); // now that current is settled, preview what's next
     } else {
+      // Every task gets a real deadline now (explicit, or the period's own
+      // close) — bucketing is one clean comparison against today:
+      //   deadline passed        -> Overdue
+      //   deadline is this month -> Due now
+      //   deadline is a later month, still within this calendar year -> Upcoming
       const dueDate    = maintDueDate(t.freqNorm, currentKey, t.dueMonth, t.dueDay);
-      const dueDateStr = dueDate ? Utilities.formatDate(dueDate, Session.getScriptTimeZone(), 'yyyy-MM-dd') : null;
-      if (dueDate && now > dueDate) {
-        // Its own due date has already passed this period — overdue, not just "due".
+      const dueDateStr = Utilities.formatDate(dueDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      if (now > dueDate) {
         overdue.push(mk(currentKey, { dueDate: dueDateStr, current: true }));
-      } else if (dueDate && (dueDate.getFullYear() * 12 + dueDate.getMonth()) > nowIdx) {
-        // Due date exists but falls in a future month — not relevant yet, don't clutter Due now.
+      } else if (dueDate.getFullYear() * 12 + dueDate.getMonth() > nowIdx) {
         upcoming.push(mk(currentKey, { dueDate: dueDateStr }));
       } else {
-        // No due date at all, or due date's month is the current month — actionable now.
         dueNow.push(mk(currentKey, { dueDate: dueDateStr }));
       }
     }
