@@ -20,7 +20,9 @@ const SHEETS = {
   TXNS:      'Transactions',
   STOCKS_MF: 'Stocks + MF Summary',
   REMIT:     'Remmitance View',
-  BUDGETS:   'Budgets'
+  BUDGETS:   'Budgets',
+  MAINTENANCE:     'Maintenance',
+  MAINTENANCE_LOG: 'Maintenance Log'
 };
 const TRACKER_SHEET_NAME = 'Tracker';
 // Separate Wallet spreadsheet — internal transfer / income ledger.
@@ -173,7 +175,8 @@ function buildDashboardData() {
     stocksDetail:  readStocksDetail(ss, accounts),
     passiveIncome: passiveIncome(walletTxns),
     remittance:    remittance(remits),
-    budget:        budgetBreakdown(ss, accounts, txns, walletTxns)
+    budget:        budgetBreakdown(ss, accounts, txns, walletTxns),
+    maintenance:   maintenanceBreakdown(ss)
   };
 }
 // ============================================================
@@ -705,6 +708,109 @@ function budgetBreakdown(ss, accounts, txns, walletTxns) {
     yearly:  yearly,   // [{category, history: [{period:'yyyy',    budgeted, actual, pct, status}, ...]}]
     unbudgeted: unbudgeted // [{period:'yyyy-MM', amt}, ...]
   };
+}
+// ============================================================
+// MAINTENANCE CHECKLIST — recurring admin to-dos (Monthly / Quarterly /
+// Half-Yearly / Yearly), sheet-driven from "Maintenance" (task list) and
+// "Maintenance Log" (append-only completion history — only ever written
+// by markMaintenanceDone() below via the dashboard's "Mark done" button,
+// never hand-edited). History-based like Budgets: a bounded lookback
+// window per frequency is recomputed fresh every load, so "Missed" is a
+// permanent record — a skipped period stays skipped, it can't be
+// retroactively marked done.
+// ============================================================
+const MAINT_LOOKBACK     = { monthly: 12, quarterly: 8, half: 6, yearly: 5 };
+const MAINT_STEP_MONTHS  = { monthly: 1,  quarterly: 3, half: 6, yearly: 12 };
+const MAINT_FREQ_LABEL   = { monthly: 'Monthly', quarterly: 'Quarterly', half: 'Half-Yearly', yearly: 'Yearly' };
+const MAINT_MONTH_ABBR   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+function normMaintFreq(f) {
+  const s = String(f || '').trim().toLowerCase();
+  if (s.indexOf('quarter') === 0) return 'quarterly';
+  if (s.indexOf('half')    === 0) return 'half';
+  if (s.indexOf('year')    === 0) return 'yearly';
+  return 'monthly'; // default, covers "Monthly" and anything unrecognized
+}
+
+function maintKeyAt(freqNorm, monthIdx) {
+  const y = Math.floor(monthIdx / 12), m = monthIdx % 12;
+  if (freqNorm === 'monthly')   return y + '-' + pad2(m + 1);
+  if (freqNorm === 'quarterly') return y + '-Q' + (Math.floor(m / 3) + 1);
+  if (freqNorm === 'half')      return y + '-H' + (m < 6 ? 1 : 2);
+  return String(y); // yearly
+}
+
+function maintPeriodLabel(freqNorm, key) {
+  if (freqNorm === 'monthly') {
+    const parts = key.split('-');
+    return MAINT_MONTH_ABBR[parseInt(parts[1], 10) - 1] + " '" + parts[0].slice(-2);
+  }
+  if (freqNorm === 'quarterly') { const p = key.split('-'); return p[1] + ' ' + p[0]; }
+  if (freqNorm === 'half')      { const p = key.split('-'); return p[1] + ' ' + p[0]; }
+  return key; // yearly
+}
+
+function maintenanceBreakdown(ss) {
+  const taskRows = readSheet(ss, SHEETS.MAINTENANCE);
+  const logRows  = readSheet(ss, SHEETS.MAINTENANCE_LOG);
+  const now      = new Date();
+  const nowIdx   = now.getFullYear() * 12 + now.getMonth();
+
+  const doneSet = {};
+  logRows.forEach(l => {
+    const task   = String(l.Task || '').trim();
+    const period = String(l.Period || '').trim();
+    if (task && period) doneSet[task + '|' + period] = true;
+  });
+
+  const tasks = taskRows
+    .filter(isActive)
+    .map(r => ({
+      name:     String(r.Task || '').trim(),
+      freqNorm: normMaintFreq(r.Frequency),
+      category: String(r.Category || '').trim() || 'General'
+    }))
+    .filter(t => t.name);
+
+  const dueNow = [], missed = [], upcoming = [], done = [];
+
+  tasks.forEach(t => {
+    const stepMonths  = MAINT_STEP_MONTHS[t.freqNorm];
+    const lookback    = MAINT_LOOKBACK[t.freqNorm];
+    const boundaryIdx = Math.floor(nowIdx / stepMonths) * stepMonths;
+    const currentKey  = maintKeyAt(t.freqNorm, boundaryIdx);
+    const nextKey     = maintKeyAt(t.freqNorm, boundaryIdx + stepMonths);
+    const freqLabel   = MAINT_FREQ_LABEL[t.freqNorm];
+
+    function mk(period) {
+      return { task: t.name, category: t.category, frequency: freqLabel, period: period, label: maintPeriodLabel(t.freqNorm, period) };
+    }
+
+    // Past periods (excluding current), oldest first — any without a log entry is Missed.
+    for (let i = lookback - 1; i >= 1; i--) {
+      const key = maintKeyAt(t.freqNorm, boundaryIdx - i * stepMonths);
+      if (!doneSet[t.name + '|' + key]) missed.push(mk(key));
+    }
+
+    if (doneSet[t.name + '|' + currentKey]) done.push(mk(currentKey));
+    else dueNow.push(mk(currentKey));
+
+    upcoming.push(mk(nextKey)); // preview only — no action possible yet
+  });
+
+  return { dueNow: dueNow, missed: missed, upcoming: upcoming, done: done };
+}
+
+// Called from Index.html via google.script.run when "Mark done" is clicked.
+// Appends to the log only — never edits or removes rows, so history is preserved.
+function markMaintenanceDone(task, period) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(SHEETS.MAINTENANCE_LOG);
+  if (!sh) throw new Error('Maintenance Log sheet not found.');
+  sh.appendRow([task, period, new Date()]);
+  return true;
 }
 // ============================================================
 // AI ADVISOR — builds prompt from live sheet data + calls Gemini
