@@ -861,28 +861,31 @@ function maintenanceBreakdown(ss) {
     }
 
     // Past periods (excluding current), oldest first — a period that's fully
-    // elapsed without a log entry is always Overdue, actionable via Mark done.
+    // elapsed either has a log entry (Done, permanently, even if it was
+    // completed late) or it doesn't (Overdue, actionable via Mark done).
     for (let i = lookback - 1; i >= 1; i--) {
       const key = maintKeyAt(t.freqNorm, boundaryIdx - i * stepMonths);
-      if (!doneSet[t.name + '|' + key]) overdue.push(mk(key));
+      if (doneSet[t.name + '|' + key]) done.push(mk(key));
+      else overdue.push(mk(key));
     }
 
     if (doneSet[t.name + '|' + currentKey]) {
       done.push(mk(currentKey));
     } else {
       // Every task gets a real deadline now (explicit, or the period's own
-      // close) — bucketing is one clean comparison against today:
-      //   deadline passed        -> Overdue
-      //   deadline is this month -> Due now
-      //   deadline is a later month, still within this calendar year -> Upcoming
+      // close). The CURRENT period never jumps to Overdue on its own — a
+      // task stays in Due now for its entire window even after its internal
+      // deadline has passed (just flagged red), and only becomes Overdue
+      // once the whole period rolls over without a completion (handled by
+      // the past-periods loop above, on the NEXT load after the window closes):
+      //   deadline is a later month, still this calendar year -> Upcoming
+      //   deadline is this month (whether or not the day has passed) -> Due now
       const dueDate    = maintDueDate(t.freqNorm, currentKey, t.dueMonth, t.dueDay);
       const dueDateStr = Utilities.formatDate(dueDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      if (now > dueDate) {
-        overdue.push(mk(currentKey, { dueDate: dueDateStr, current: true }));
-      } else if (dueDate.getFullYear() * 12 + dueDate.getMonth() > nowIdx) {
+      if (dueDate.getFullYear() * 12 + dueDate.getMonth() > nowIdx) {
         upcoming.push(mk(currentKey, { dueDate: dueDateStr }));
       } else {
-        dueNow.push(mk(currentKey, { dueDate: dueDateStr }));
+        dueNow.push(mk(currentKey, { dueDate: dueDateStr, overdue: now > dueDate }));
       }
     }
   });

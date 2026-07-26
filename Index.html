@@ -977,7 +977,10 @@ renderBreakdown('expenseList', DATA.expense, '€');
     }
 
     if (maintTab === 'due') {
+      // Past-their-own-deadline-but-still-in-window items float to the top
+      // (flagged red), then soonest-due, then alphabetical.
       rows.sort((a, b) => {
+        if (!!a.overdue !== !!b.overdue) return a.overdue ? -1 : 1;
         if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
         if (a.dueDate !== b.dueDate) return a.dueDate ? -1 : 1;
         return (a.category + a.task).localeCompare(b.category + b.task);
@@ -1000,10 +1003,12 @@ renderBreakdown('expenseList', DATA.expense, '€');
       action = `<span class="pill ${maintPillClass[tab]} shrink-0" style="font-size: 10px; padding: 2px 8px;">${maintPillLabel[tab]}</span>`;
     }
     let dueHtml = '';
-    if (r.dueDate) {
-      dueHtml = r.current && tab === 'overdue'
+    if (tab === 'due' && r.dueDate) {
+      // Still within this task's window either way — red just flags that its
+      // own deadline has slipped, it doesn't move the item out of Due now.
+      dueHtml = r.overdue
         ? `<span class="pill pill-red" style="font-size: 10px; padding: 1px 8px; margin-left: 6px;">Overdue since ${fmtDueDate(r.dueDate)}</span>`
-        : (tab === 'due' ? `<span class="pill pill-neutral" style="font-size: 10px; padding: 1px 8px; margin-left: 6px;">Due by ${fmtDueDate(r.dueDate)}</span>` : '');
+        : `<span class="pill pill-neutral" style="font-size: 10px; padding: 1px 8px; margin-left: 6px;">Due by ${fmtDueDate(r.dueDate)}</span>`;
     }
     const descHtml = (r.description && !opts.nested)
       ? `<div class="text-[11px] mt-1" style="color: var(--text-muted); opacity: 0.85;">${r.description}</div>`
@@ -1028,6 +1033,8 @@ renderBreakdown('expenseList', DATA.expense, '€');
   // Groups Overdue rows by task. A task with only one overdue period renders
   // as a normal row; 2+ periods collapse into one summary row with an
   // "N overdue" badge, expandable to reveal each period individually.
+  // Group keys are namespaced per-tab ('overdue|task') so expand state never
+  // collides with the same task's group in the Done tab.
   function renderOverdueGroups(rows) {
     const groups = {};
     rows.forEach(r => {
@@ -1042,14 +1049,15 @@ renderBreakdown('expenseList', DATA.expense, '€');
       const items = groups[task].sort((a, b) => a.period.localeCompare(b.period));
       if (items.length === 1) return renderMaintRow(items[0], 'overdue');
       const first = items[0];
-      const expanded = maintExpanded.has(task);
+      const groupKey = 'overdue|' + task;
+      const expanded = maintExpanded.has(groupKey);
       const descHtml = first.description
         ? `<div class="text-[11px] mt-1" style="color: var(--text-muted); opacity: 0.85;">${first.description}</div>`
         : '';
       const nestedRows = items.map(it => renderMaintRow(it, 'overdue', { nested: true })).join('');
       return `
         <div style="border-bottom: 1px solid var(--border);">
-          <div class="flex items-center justify-between gap-3 py-2.5 cursor-pointer" onclick="toggleMaintGroup('${encodeURIComponent(task)}')">
+          <div class="flex items-center justify-between gap-3 py-2.5 cursor-pointer" onclick="toggleMaintGroup('${encodeURIComponent(groupKey)}')">
             <div class="min-w-0">
               <div class="text-sm truncate" style="font-weight: 600;">${first.task}</div>
               <div class="text-[11px]" style="color: var(--text-muted);">${first.category} · ${first.frequency}</div>
@@ -1062,31 +1070,60 @@ renderBreakdown('expenseList', DATA.expense, '€');
     }).join('');
   }
 
-  // Done only ever holds one entry per task (the current period), so there's
-  // no repeat-period noise to bundle like Overdue — instead it groups by
-  // Category into labeled sections, which is what actually keeps a growing
-  // Done list scannable.
+  // Groups Done rows first by Category (section headers), then by task within
+  // each category — a task completed across many periods (e.g. caught up on
+  // several months of backlog) collapses into one "N completed" row instead
+  // of repeating itself, exactly like Overdue's bundling. Most recent period
+  // shown first when expanded.
   function renderDoneGroups(rows) {
-    const groups = {};
+    const catGroups = {};
     rows.forEach(r => {
       const cat = r.category || 'General';
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(r);
+      if (!catGroups[cat]) catGroups[cat] = [];
+      catGroups[cat].push(r);
     });
-    const cats = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+    const cats = Object.keys(catGroups).sort((a, b) => a.localeCompare(b));
     return cats.map(cat => {
-      const items = groups[cat].sort((a, b) => a.task.localeCompare(b.task));
-      const rowsHtml = items.map(r => `
-        <div class="flex items-center justify-between gap-3 py-2" style="border-bottom: 1px solid var(--border);">
-          <div class="min-w-0">
-            <div class="text-sm truncate" style="font-weight: 600;">${r.task}</div>
-            <div class="text-[11px]" style="color: var(--text-muted);">${r.frequency} · ${r.label}</div>
-          </div>
-          <span class="pill pill-green shrink-0" style="font-size: 10px; padding: 2px 8px;">Done</span>
-        </div>`).join('');
+      const byTask = {};
+      catGroups[cat].forEach(r => { (byTask[r.task] = byTask[r.task] || []).push(r); });
+      const taskNames = Object.keys(byTask).sort((a, b) => a.localeCompare(b));
+      const rowsHtml = taskNames.map(task => {
+        const items = byTask[task].sort((a, b) => b.period.localeCompare(a.period)); // most recent first
+        if (items.length === 1) {
+          const r = items[0];
+          return `
+            <div class="flex items-center justify-between gap-3 py-2" style="border-bottom: 1px solid var(--border);">
+              <div class="min-w-0">
+                <div class="text-sm truncate" style="font-weight: 600;">${r.task}</div>
+                <div class="text-[11px]" style="color: var(--text-muted);">${r.frequency} · ${r.label}</div>
+              </div>
+              <span class="pill pill-green shrink-0" style="font-size: 10px; padding: 2px 8px;">Done</span>
+            </div>`;
+        }
+        const first = items[0];
+        const groupKey = 'done|' + task;
+        const expanded = maintExpanded.has(groupKey);
+        const nestedRows = items.map(it => `
+          <div class="flex items-center justify-between gap-3 py-2" style="border-bottom: 1px solid var(--border); padding-left: 20px;">
+            <div class="text-sm">${it.label}</div>
+            <span class="pill pill-green shrink-0" style="font-size: 10px; padding: 2px 8px;">Done</span>
+          </div>`).join('');
+        return `
+          <div>
+            <div class="flex items-center justify-between gap-3 py-2 cursor-pointer" style="border-bottom: 1px solid var(--border);" onclick="toggleMaintGroup('${encodeURIComponent(groupKey)}')">
+              <div class="min-w-0">
+                <div class="text-sm truncate" style="font-weight: 600;">${first.task}</div>
+                <div class="text-[11px]" style="color: var(--text-muted);">${first.frequency}</div>
+              </div>
+              <span class="pill pill-green shrink-0" style="font-size: 10px; padding: 2px 8px;">${items.length} completed ${expanded ? '&#9650;' : '&#9660;'}</span>
+            </div>
+            <div style="display:${expanded ? 'block' : 'none'};">${nestedRows}</div>
+          </div>`;
+      }).join('');
+      const totalCount = catGroups[cat].length;
       return `
         <div class="mb-1">
-          <div class="text-[11px] mt-3 mb-1.5" style="color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;">${cat} · ${items.length}</div>
+          <div class="text-[11px] mt-3 mb-1.5" style="color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;">${cat} · ${totalCount}</div>
           ${rowsHtml}
         </div>`;
     }).join('');
