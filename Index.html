@@ -294,8 +294,15 @@
   <section class="reveal reveal-4 mb-5">
     <div class="card p-5 sm:p-7">
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
-        <div><div class="section-label">Cash flow</div><div class="text-2xl mt-0.5" style="font-weight: 800;">Income vs Expense · monthly (€)</div></div>
-        <div class="flex items-center gap-3 text-[11px]" style="font-weight: 600;"><span class="flex items-center gap-1.5" style="color: var(--green-deep);"><span class="dot" style="background: var(--green);"></span>Income</span><span class="flex items-center gap-1.5" style="color: var(--orange-deep);"><span class="dot" style="background: var(--orange);"></span>Expense</span></div>
+        <div><div class="section-label">Cash flow</div><div class="text-2xl mt-0.5" style="font-weight: 800;">Income vs Expense · monthly</div></div>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-3 text-[11px]" style="font-weight: 600;"><span class="flex items-center gap-1.5" style="color: var(--green-deep);"><span class="dot" style="background: var(--green);"></span>Income</span><span class="flex items-center gap-1.5" style="color: var(--orange-deep);"><span class="dot" style="background: var(--orange);"></span>Expense</span></div>
+          <div id="cashflowCcyToggle" class="flex items-center p-1 rounded-full" style="background: var(--card-inner);">
+            <button class="tab-btn active" data-ccy="INR" onclick="setCashflowCcy('INR', this)">₹ INR</button>
+            <button class="tab-btn" data-ccy="EUR" onclick="setCashflowCcy('EUR', this)">€ EUR</button>
+          </div>
+          <select id="cashflowYearSelect" class="text-[12px] px-2.5 py-1.5 rounded-lg num" style="border: 1px solid var(--border-strong); background: var(--card-inner); font-weight: 600; color: var(--text);"></select>
+        </div>
       </div>
       <div class="chart-wrap chart-wrap-sm"><canvas id="flowChart"></canvas></div>
       <div class="grid grid-cols-3 gap-3 mt-5">
@@ -670,24 +677,74 @@ updateHeroNumber();
   document.getElementById('ccyRate').textContent = '₹' + (DATA.eurRate || 0).toFixed(2);
 }
 // ── Cash flow chart ──────────────────────────────────────────
+// Data arrives pre-split by native currency (incInr/expInr vs
+// incEur/expEur) — INR and EUR amounts were summed separately in
+// Code.gs from BOTH the main Transactions sheet and the Wallet sheet,
+// covering every Income/Expense row regardless of currency. Here,
+// whichever isn't the selected display currency gets converted using
+// DATA.eurRate and combined into one global total per bar. Toggling
+// currency only re-converts and re-renders — it never changes which
+// transactions were counted. Default display is INR; a toggle switches
+// to EUR. Year selector mirrors the Budgets yearly dropdown pattern.
 {
-  const cf = DATA.cashflow;
-  new Chart(document.getElementById('flowChart'), {
+  const cfData = DATA.cashflow || { monthly: [], years: [] };
+  const eurRate = DATA.eurRate || 112;
+  let cashflowCcy = 'INR'; // default
+
+  const yearSelect = document.getElementById('cashflowYearSelect');
+  yearSelect.innerHTML = cfData.years.map(y => `<option value="${y}">${y}</option>`).join('');
+  if (cfData.years.length) yearSelect.value = cfData.years[cfData.years.length - 1]; // default: most recent year
+
+  const flowChart = new Chart(document.getElementById('flowChart'), {
     type: 'bar',
-    data: { labels: cf.map(d => d.m), datasets: [
-      { label: 'Income', data: cf.map(d => d.inc), backgroundColor: '#22c55e', borderRadius: 6, barPercentage: 0.7, categoryPercentage: 0.7 },
-      { label: 'Expense', data: cf.map(d => d.exp), backgroundColor: '#f97316', borderRadius: 6, barPercentage: 0.7, categoryPercentage: 0.7 }
+    data: { labels: [], datasets: [
+      { label: 'Income', data: [], backgroundColor: '#22c55e', borderRadius: 6, barPercentage: 0.7, categoryPercentage: 0.7 },
+      { label: 'Expense', data: [], backgroundColor: '#f97316', borderRadius: 6, barPercentage: 0.7, categoryPercentage: 0.7 }
     ]},
     options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1a1d1f', borderWidth: 0, padding: { x: 12, y: 8 }, cornerRadius: 10, titleColor: '#ffffff', bodyColor: '#ffffff', callbacks: { label: c => '  ' + c.dataset.label + ': €' + c.parsed.y.toLocaleString('de-DE') } } },
-      scales: { x: { grid: { display: false }, border: { display: false } }, y: { grid: { color: '#e8ece6' }, border: { display: false }, ticks: { callback: v => '€' + (v/1000).toFixed(0) + 'k' } } }
+      plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1a1d1f', borderWidth: 0, padding: { x: 12, y: 8 }, cornerRadius: 10, titleColor: '#ffffff', bodyColor: '#ffffff', callbacks: { label: c => '  ' + c.dataset.label + ': ' + fmtFlowAmt(c.parsed.y) } } },
+      scales: { x: { grid: { display: false }, border: { display: false } }, y: { grid: { color: '#e8ece6' }, border: { display: false }, ticks: { callback: v => fmtFlowAxis(v) } } }
     }
   });
-  const avgInc = cf.length ? cf.reduce((s,d) => s + d.inc, 0) / cf.length : 0;
-  const avgExp = cf.length ? cf.reduce((s,d) => s + d.exp, 0) / cf.length : 0;
-  document.getElementById('kpiAvgInc').textContent = '€' + Math.round(avgInc).toLocaleString('de-DE');
-  document.getElementById('kpiAvgExp').textContent = '€' + Math.round(avgExp).toLocaleString('de-DE');
-  document.getElementById('kpiSavings').textContent = avgInc ? ((avgInc - avgExp) / avgInc * 100).toFixed(1) + '%' : '—';
+
+  // Global total for a single month row, in the currently selected
+  // display currency — sums native + converted-other-currency amounts.
+  function globalInc(row) {
+    return cashflowCcy === 'INR'
+      ? row.incInr + row.incEur * eurRate
+      : row.incInr / eurRate + row.incEur;
+  }
+  function globalExp(row) {
+    return cashflowCcy === 'INR'
+      ? row.expInr + row.expEur * eurRate
+      : row.expInr / eurRate + row.expEur;
+  }
+  function fmtFlowAmt(v) { return cashflowCcy === 'INR' ? fmtINR(v) : '€' + Math.round(v).toLocaleString('de-DE'); }
+  function fmtFlowAxis(v) { return cashflowCcy === 'INR' ? fmtINR(v) : '€' + (v/1000).toFixed(0) + 'k'; }
+
+  function renderCashflowYear() {
+    const yr = Number(yearSelect.value);
+    const rows = cfData.monthly.filter(d => d.year === yr);
+    flowChart.data.labels = rows.map(d => d.m);
+    flowChart.data.datasets[0].data = rows.map(d => Math.round(globalInc(d)));
+    flowChart.data.datasets[1].data = rows.map(d => Math.round(globalExp(d)));
+    flowChart.update();
+    const avgInc = rows.length ? rows.reduce((s,d) => s + globalInc(d), 0) / rows.length : 0;
+    const avgExp = rows.length ? rows.reduce((s,d) => s + globalExp(d), 0) / rows.length : 0;
+    document.getElementById('kpiAvgInc').textContent = fmtFlowAmt(Math.round(avgInc));
+    document.getElementById('kpiAvgExp').textContent = fmtFlowAmt(Math.round(avgExp));
+    document.getElementById('kpiSavings').textContent = avgInc ? ((avgInc - avgExp) / avgInc * 100).toFixed(1) + '%' : '—';
+  }
+  yearSelect.addEventListener('change', renderCashflowYear);
+
+  window.setCashflowCcy = function(ccy, btn) {
+    cashflowCcy = ccy;
+    btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderCashflowYear();
+  };
+
+  renderCashflowYear();
 }
 // ── Remittances ──────────────────────────────────────────────
 {

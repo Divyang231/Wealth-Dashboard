@@ -167,7 +167,7 @@ function buildDashboardData() {
     summary:       summary(accounts),
     trend:         trend(history),
     currencySplit: currencySplit(accounts),
-    cashflow:      cashflow(txns),
+    cashflow:      cashflow(txns, walletTxns),
     income:        incomeBreakdown(txns),
     expense:       expenseBreakdown(txns),
     accounts:      accountGroups(accounts),
@@ -326,29 +326,59 @@ function currencySplit(accounts) {
 }
 // ============================================================
 // CASH FLOW
+// Combines main-sheet Transactions + Wallet Transactions, and counts
+// EVERY Income/Expense row regardless of currency — INR and EUR rows
+// are summed separately per month (never mixed as raw numbers), so
+// nothing is silently dropped the way EUR-only filtering used to drop
+// INR-denominated entries. The client converts one currency into the
+// other for display using DATA.eurRate and adds them into a single
+// global total — conversion happens only at render time, never here.
+// Transfer/Remit/anything else is still ignored — only Income/Expense
+// rows count.
 // ============================================================
-function cashflow(txns) {
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - 12);
-  const buckets = {};
-  txns.forEach(t => {
-    const d = t.Date;
-    if (!(d instanceof Date) || d < cutoff) return;
-    if (!isEur(t.Currency)) return;
-    const key = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
-    if (!buckets[key]) buckets[key] = { inc: 0, exp: 0 };
-    buckets[key].inc += num(t.Income);
-    buckets[key].exp += num(t.Expense);
-  });
-  return Object.keys(buckets).sort().map(k => {
+function cashflow(txns, walletTxns) {
+  const buckets = {}; // 'yyyy-MM' -> { incInr, expInr, incEur, expEur }
+
+  function addRows(rows, dateFn) {
+    rows.forEach(t => {
+      const type = String(t.Type || '').trim().toLowerCase();
+      if (type !== 'income' && type !== 'expense') return; // ignore Transfer/Remit/other
+      const d = dateFn(t.Date);
+      if (!d) return;
+      const key = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+      if (!buckets[key]) buckets[key] = { incInr: 0, expInr: 0, incEur: 0, expEur: 0 };
+      const amt = type === 'income' ? (num(t.Income) || num(t.Amount)) : (num(t.Expense) || num(t.Amount));
+      const eur = isEur(t.Currency);
+      if (type === 'income') {
+        if (eur) buckets[key].incEur += amt; else buckets[key].incInr += amt;
+      } else {
+        if (eur) buckets[key].expEur += amt; else buckets[key].expInr += amt;
+      }
+    });
+  }
+
+  addRows(txns, d => (d instanceof Date ? d : null));
+  addRows(walletTxns, parseWalletDate);
+
+  const tz = Session.getScriptTimeZone();
+  const monthly = Object.keys(buckets).sort().map(k => {
     const [y, m] = k.split('-');
     const dt = new Date(Number(y), Number(m) - 1, 1);
+    const b = buckets[k];
     return {
-      m:   Utilities.formatDate(dt, Session.getScriptTimeZone(), 'MMM yy'),
-      inc: Math.round(buckets[k].inc),
-      exp: Math.round(buckets[k].exp)
+      key:    k,
+      year:   Number(y),
+      m:      Utilities.formatDate(dt, tz, 'MMM'),
+      incInr: Math.round(b.incInr),
+      expInr: Math.round(b.expInr),
+      incEur: Math.round(b.incEur * 100) / 100,
+      expEur: Math.round(b.expEur * 100) / 100
     };
   });
+
+  const years = Array.from(new Set(monthly.map(x => x.year))).sort((a, b) => a - b);
+
+  return { monthly, years };
 }
 // ============================================================
 // INCOME / EXPENSE BREAKDOWN
@@ -914,17 +944,25 @@ function runGeminiAdvisor() {
     const ss       = SpreadsheetApp.getActiveSpreadsheet();
     const accounts = readSheet(ss, SHEETS.ACCOUNTS);
     const txns     = readSheet(ss, SHEETS.TXNS);
+    const walletSs2   = SpreadsheetApp.openById(WALLET_SPREADSHEET_ID);
+    const walletTxns2 = readSheet(walletSs2, WALLET_SHEETS.TXNS);
     fillCategory(accounts);
 
     const s   = summary(accounts);
     const nw  = s.total || 1;
-    const cf  = cashflow(txns);
+    const cf  = cashflow(txns, walletTxns2); // { monthly: [...], years: [...] }
     const ccy = currencySplit(accounts);
     const sd  = readStocksDetail(ss, accounts);
     const ft  = sd ? (sd.familyTotal || {}) : {};
 
-    var avgInc = cf.length ? cf.reduce(function(a,d){return a+d.inc;},0)/cf.length : 0;
-    var avgExp = cf.length ? cf.reduce(function(a,d){return a+d.exp;},0)/cf.length : 0;
+    // Use only the most recent 12 months of monthly history for the
+    // advisor prompt's "last 12 months" cash-flow figures, converting
+    // each month's EUR figures into the blended global (INR+EUR->EUR)
+    // average the prompt expects, at the current latestEurRate().
+    var eurRateForPrompt = latestEurRate(accounts);
+    var cfLast12 = (cf.monthly || []).slice(-12);
+    var avgInc = cfLast12.length ? cfLast12.reduce(function(a,d){return a + (d.incInr / eurRateForPrompt + d.incEur);},0) / cfLast12.length : 0;
+    var avgExp = cfLast12.length ? cfLast12.reduce(function(a,d){return a + (d.expInr / eurRateForPrompt + d.expEur);},0) / cfLast12.length : 0;
     var savingsRate = avgInc ? ((avgInc-avgExp)/avgInc*100).toFixed(1) : 0;
 
     function pct(v){ return (v/nw*100).toFixed(1); }
