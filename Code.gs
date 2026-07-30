@@ -167,7 +167,7 @@ function buildDashboardData() {
     summary:       summary(accounts),
     trend:         trend(history),
     currencySplit: currencySplit(accounts),
-    cashflow:      cashflow(txns, walletTxns),
+    cashflow:      cashflow(txns, walletTxns, accounts),
     income:        incomeBreakdown(txns),
     expense:       expenseBreakdown(txns),
     accounts:      accountGroups(accounts),
@@ -335,11 +335,23 @@ function currencySplit(accounts) {
 // global total — conversion happens only at render time, never here.
 // Transfer/Remit/anything else is still ignored — only Income/Expense
 // rows count.
+//
+// Currency resolution for main-sheet Transactions mirrors
+// budgetBreakdown(): the Transactions sheet's own per-row Currency
+// column can be mislabeled (e.g. a Euro-account salary row marked
+// "INR" by mistake), so the account's TRUE currency is looked up from
+// the Account sheet instead, via acctCurrency. Falls back to the row's
+// own Currency column only if the account name isn't found there.
+// Wallet transactions reference Wallet-internal account names that
+// don't appear on the Account sheet at all, so they always use their
+// own Currency column — same caveat already documented in
+// budgetBreakdown().
 // ============================================================
-function cashflow(txns, walletTxns) {
+function cashflow(txns, walletTxns, accounts) {
   const buckets = {}; // 'yyyy-MM' -> { incInr, expInr, incEur, expEur }
+  const acctCurrency = buildAccountCurrencyMap(accounts || []);
 
-  function addRows(rows, dateFn) {
+  function addRows(rows, dateFn, useAccountLookup) {
     rows.forEach(t => {
       const type = String(t.Type || '').trim().toLowerCase();
       if (type !== 'income' && type !== 'expense') return; // ignore Transfer/Remit/other
@@ -348,7 +360,12 @@ function cashflow(txns, walletTxns) {
       const key = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
       if (!buckets[key]) buckets[key] = { incInr: 0, expInr: 0, incEur: 0, expEur: 0 };
       const amt = type === 'income' ? (num(t.Income) || num(t.Amount)) : (num(t.Expense) || num(t.Amount));
-      const eur = isEur(t.Currency);
+      const acctName = normalizeAcctName(t.Account);
+      const looked = useAccountLookup ? acctCurrency[acctName] : null;
+      if (useAccountLookup && acctName && !looked) {
+        Logger.log('cashflow: no Account-sheet currency match for "' + t.Account + '" (txn ' + (t.ID || '') + ') — used Transactions Currency column ("' + t.Currency + '") instead.');
+      }
+      const eur = looked ? (looked === 'EUR') : isEur(t.Currency);
       if (type === 'income') {
         if (eur) buckets[key].incEur += amt; else buckets[key].incInr += amt;
       } else {
@@ -357,8 +374,8 @@ function cashflow(txns, walletTxns) {
     });
   }
 
-  addRows(txns, d => (d instanceof Date ? d : null));
-  addRows(walletTxns, parseWalletDate);
+  addRows(txns, d => (d instanceof Date ? d : null), true);
+  addRows(walletTxns, parseWalletDate, false);
 
   const tz = Session.getScriptTimeZone();
   const monthly = Object.keys(buckets).sort().map(k => {
@@ -950,7 +967,7 @@ function runGeminiAdvisor() {
 
     const s   = summary(accounts);
     const nw  = s.total || 1;
-    const cf  = cashflow(txns, walletTxns2); // { monthly: [...], years: [...] }
+    const cf  = cashflow(txns, walletTxns2, accounts); // { monthly: [...], years: [...] }
     const ccy = currencySplit(accounts);
     const sd  = readStocksDetail(ss, accounts);
     const ft  = sd ? (sd.familyTotal || {}) : {};
