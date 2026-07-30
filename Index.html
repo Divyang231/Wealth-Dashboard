@@ -1022,6 +1022,13 @@ renderBreakdown('expenseList', DATA.expense, '€');
 // Yearly view: Allocated/Spent are pure calendar-year totals (not
 // rollover-adjusted) — "how much went into/out of this space this
 // year" — with the year-end rollover balance shown as a bonus figure.
+//
+// Both views share one row layout: three labeled stats (Budgeted /
+// Allocated / Spent, when a budget is defined for that category) with
+// an under/overfunded pill, then two separate bars — Funding
+// (Allocated vs Budgeted) and Spending (Spent vs Available) — each
+// captioned with real amounts naming its own denominator, so there's
+// no ambiguity about what each bar's percentage is measured against.
 {
   const n26 = DATA.n26Spaces || { months: [], years: [], spaces: [] };
   const monthSelect = document.getElementById('n26MonthSelect');
@@ -1037,6 +1044,53 @@ renderBreakdown('expenseList', DATA.expense, '€');
   if (n26.years.length) yearSelect.value = n26.years[n26.years.length - 1]; // default: current year
 
   let n26View = 'monthly';
+
+  // Shared row renderer — r needs { category, allocated, spent, available, budgeted }
+  // plus a balance figure passed via opts (monthly Balance vs yearly Year-end balance).
+  function n26RowHtml(r, opts) {
+    const hasBudget = r.budgeted !== null && r.budgeted !== undefined;
+
+    const fundingPct = hasBudget
+      ? (r.budgeted > 0 ? Math.min((r.allocated / r.budgeted) * 100, 100) : (r.allocated > 0 ? 100 : 0))
+      : 0;
+    const fundingBarColor = fundingPct >= 100 ? 'var(--green)' : (fundingPct >= 80 ? 'var(--gold)' : 'var(--red)');
+    const delta = hasBudget ? r.allocated - r.budgeted : 0;
+    let fundingPill = '';
+    if (hasBudget) {
+      if (delta < -0.5) fundingPill = `<span class="pill pill-gold" style="font-size: 10px; padding: 2px 8px;">Underfunded ${fmtCcy(Math.abs(delta), 'EUR')}</span>`;
+      else if (delta > 0.5) fundingPill = `<span class="pill pill-green" style="font-size: 10px; padding: 2px 8px;">Overfunded ${fmtCcy(delta, 'EUR')}</span>`;
+      else fundingPill = `<span class="pill pill-green" style="font-size: 10px; padding: 2px 8px;">Fully funded</span>`;
+    }
+
+    const spendPct = r.available > 0 ? Math.min((r.spent / r.available) * 100, 100) : (r.spent > 0 ? 100 : 0);
+    const spendBarColor = r.spent > r.available ? 'var(--red)' : (spendPct >= 80 ? 'var(--gold)' : 'var(--green)');
+
+    return `
+      <div>
+        <div class="flex items-baseline justify-between mb-2">
+          <span class="text-sm truncate" style="font-weight: 700;">${r.category}</span>
+          <div class="text-right shrink-0">
+            <div class="text-[10px]" style="color: var(--text-muted); font-weight: 600;">${opts.balanceLabel}</div>
+            <span class="num text-sm" style="font-weight: 800; color: ${opts.balanceValue < 0 ? 'var(--red-deep)' : 'var(--text)'};">${fmtCcy(opts.balanceValue, 'EUR')}</span>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-baseline gap-4 mb-2.5">
+          ${hasBudget ? `<div><div class="text-[10px]" style="color: var(--text-muted); font-weight: 600;">Budgeted</div><div class="num text-sm" style="font-weight: 700;">${fmtCcy(r.budgeted, 'EUR')}</div></div>` : ''}
+          <div><div class="text-[10px]" style="color: var(--text-muted); font-weight: 600;">Allocated</div><div class="num text-sm" style="font-weight: 700;">${fmtCcy(r.allocated, 'EUR')}</div></div>
+          <div><div class="text-[10px]" style="color: var(--text-muted); font-weight: 600;">Spent</div><div class="num text-sm" style="font-weight: 700;">${fmtCcy(r.spent, 'EUR')}</div></div>
+          ${fundingPill}
+        </div>
+        ${hasBudget ? `
+        <div class="mb-2.5">
+          <div class="text-[10px] mb-1" style="color: var(--text-muted); font-weight: 500;">Funding — ${fmtCcy(r.allocated, 'EUR')} of ${fmtCcy(r.budgeted, 'EUR')} budgeted</div>
+          <div class="hbar" style="height: 5px;"><span style="width: ${fundingPct.toFixed(1)}%; background: ${fundingBarColor};"></span></div>
+        </div>` : ''}
+        <div>
+          <div class="text-[10px] mb-1" style="color: var(--text-muted); font-weight: 500;">Spending — ${fmtCcy(r.spent, 'EUR')} of ${fmtCcy(r.available, 'EUR')} available</div>
+          <div class="hbar" style="height: 5px;"><span style="width: ${spendPct.toFixed(1)}%; background: ${spendBarColor};"></span></div>
+        </div>
+      </div>`;
+  }
 
   function renderN26Monthly() {
     const mk = monthSelect.value;
@@ -1057,27 +1111,9 @@ renderBreakdown('expenseList', DATA.expense, '€');
       return;
     }
 
-    document.getElementById('n26SpacesList').innerHTML = rows.map(r => {
-      const usedPct = r.available > 0 ? Math.min((r.spent / r.available) * 100, 100) : (r.spent > 0 ? 100 : 0);
-      const overspent = r.spent > r.available;
-      const barColor = overspent ? 'var(--red)' : (usedPct >= 80 ? 'var(--gold)' : 'var(--green)');
-      const balColor = r.balance < 0 ? 'var(--red-deep)' : 'var(--text)';
-      return `
-        <div>
-          <div class="flex items-baseline justify-between mb-1.5">
-            <span class="text-sm truncate" style="font-weight: 700;">${r.category}</span>
-            <div class="text-right shrink-0">
-              <div class="text-[10px]" style="color: var(--text-muted); font-weight: 600;">Balance</div>
-              <span class="num text-sm" style="font-weight: 800; color: ${balColor};">${fmtCcy(r.balance, 'EUR')}</span>
-            </div>
-          </div>
-          <div class="hbar"><span style="width: ${usedPct.toFixed(1)}%; background: ${barColor};"></span></div>
-          <div class="flex items-baseline justify-between mt-1.5">
-            <span class="num text-[11px]" style="color: var(--text-muted); font-weight: 500;">Spent ${fmtCcy(r.spent, 'EUR')} of ${fmtCcy(r.available, 'EUR')} available</span>
-            <span class="num text-[11px]" style="color: var(--text-muted); font-weight: 500;">+${fmtCcy(r.allocated, 'EUR')} this month</span>
-          </div>
-        </div>`;
-    }).join('');
+    document.getElementById('n26SpacesList').innerHTML = rows
+      .map(r => n26RowHtml(r, { balanceLabel: 'Balance', balanceValue: r.balance }))
+      .join('');
   }
 
   function renderN26Yearly() {
@@ -1099,27 +1135,9 @@ renderBreakdown('expenseList', DATA.expense, '€');
       return;
     }
 
-    document.getElementById('n26SpacesList').innerHTML = rows.map(r => {
-      const netColor = r.net < 0 ? 'var(--red-deep)' : 'var(--green-deep)';
-      const balColor = r.endBalance < 0 ? 'var(--red-deep)' : 'var(--text)';
-      const spentPct = r.allocated > 0 ? Math.min((r.spent / r.allocated) * 100, 100) : (r.spent > 0 ? 100 : 0);
-      const barColor = r.spent > r.allocated ? 'var(--red)' : (spentPct >= 80 ? 'var(--gold)' : 'var(--green)');
-      return `
-        <div>
-          <div class="flex items-baseline justify-between mb-1.5">
-            <span class="text-sm truncate" style="font-weight: 700;">${r.category}</span>
-            <div class="text-right shrink-0">
-              <div class="text-[10px]" style="color: var(--text-muted); font-weight: 600;">Year-end balance</div>
-              <span class="num text-sm" style="font-weight: 800; color: ${balColor};">${fmtCcy(r.endBalance, 'EUR')}</span>
-            </div>
-          </div>
-          <div class="hbar"><span style="width: ${spentPct.toFixed(1)}%; background: ${barColor};"></span></div>
-          <div class="flex items-baseline justify-between mt-1.5">
-            <span class="num text-[11px]" style="color: var(--text-muted); font-weight: 500;">Allocated ${fmtCcy(r.allocated, 'EUR')} · Spent ${fmtCcy(r.spent, 'EUR')}</span>
-            <span class="num text-[11px]" style="font-weight: 700; color: ${netColor};">${r.net >= 0 ? '+' : ''}${fmtCcy(r.net, 'EUR')} net</span>
-          </div>
-        </div>`;
-    }).join('');
+    document.getElementById('n26SpacesList').innerHTML = rows
+      .map(r => n26RowHtml(r, { balanceLabel: 'Year-end balance', balanceValue: r.endBalance }))
+      .join('');
   }
 
   function renderN26() {

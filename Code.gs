@@ -176,7 +176,7 @@ function buildDashboardData() {
     passiveIncome: passiveIncome(walletTxns),
     remittance:    remittance(remits),
     budget:        budgetBreakdown(ss, accounts, txns, walletTxns),
-    n26Spaces:     n26Spaces(txns),
+    n26Spaces:     n26Spaces(ss, txns, accounts),
     maintenance:   maintenanceBreakdown(ss)
   };
 }
@@ -776,10 +776,36 @@ function budgetBreakdown(ss, accounts, txns, walletTxns) {
 // Hiral Commerzbank and Hiral N26 are EUR accounts by definition, so
 // this sidesteps the Currency-column mislabeling issue documented in
 // cashflow() entirely, rather than needing another lookup for it.
+//
+// Budgeted amounts are matched by Category against the same "Budgets"
+// sheet budgetBreakdown() reads, converted to EUR (that sheet's
+// amounts can be entered in either currency; budgetBreakdown converts
+// to INR for its own INR-denominated card, but this card is entirely
+// EUR, so the conversion direction here is the opposite). A category
+// with no matching Active Budgets row gets budgeted: null — the
+// client hides the funding bar/pill entirely rather than showing a
+// fabricated ₹0/€0 target.
 // ============================================================
-function n26Spaces(txns) {
+function n26Spaces(ss, txns, accounts) {
   const N26_ACCOUNT    = 'Hiral N26';
   const SOURCE_ACCOUNT = 'Hiral Commerzbank';
+
+  // category -> { period: 'Monthly'|'Yearly', budgetedEur }
+  const spaceBudget = {};
+  {
+    const rate = latestEurRate(accounts);
+    readSheet(ss, SHEETS.BUDGETS).filter(isActive).forEach(b => {
+      const category = String(b.Category || '').trim();
+      if (!category) return;
+      const isYearly    = String(b['Period (Monthly/Yearly)'] || '').trim().toLowerCase().indexOf('year') === 0;
+      const isEurBudget = String(b.Currency || '').trim().toUpperCase() === 'EUR';
+      const rawAmt = num(b['Budget Amount']);
+      spaceBudget[category] = {
+        period:      isYearly ? 'Yearly' : 'Monthly',
+        budgetedEur: isEurBudget ? rawAmt : (rate ? rawAmt / rate : rawAmt)
+      };
+    });
+  }
 
   const monthCat = {};      // 'yyyy-MM' -> { category -> { allocated, spent } }
   const categorySet = new Set();
@@ -815,7 +841,7 @@ function n26Spaces(txns) {
     }
   });
 
-  if (!earliestKey) return { months: [], spaces: [] };
+  if (!earliestKey) return { months: [], years: [], spaces: [] };
 
   // Build a CONTINUOUS month list from earliest tagged activity through
   // the current month — gaps must be included as zero-activity months,
@@ -839,45 +865,64 @@ function n26Spaces(txns) {
   const categories = Array.from(categorySet).sort();
 
   const spaces = categories.map(cat => {
+    const budgetDef = spaceBudget[cat] || null;
     let running = 0;
+    let prevYear = null;
+    const yearStartBalance = {}; // 'yyyy' -> rollover balance carried INTO that year
+
     const history = months.map(mk => {
+      const y = mk.split('-')[0];
       const rec = (monthCat[mk] && monthCat[mk][cat]) || { allocated: 0, spent: 0 };
       const startBalance = running;
+      if (y !== prevYear) { yearStartBalance[y] = startBalance; prevYear = y; }
       const available = startBalance + rec.allocated;
       running = available - rec.spent;
+      const budgeted = budgetDef
+        ? (budgetDef.period === 'Monthly' ? budgetDef.budgetedEur : budgetDef.budgetedEur / 12)
+        : null;
       return {
         period:    mk,
         allocated: Math.round(rec.allocated),
         spent:     Math.round(rec.spent),
         available: Math.round(available),
-        balance:   Math.round(running)
+        balance:   Math.round(running),
+        budgeted:  budgeted !== null ? Math.round(budgeted) : null
       };
     });
+
     // Yearly rollup, derived from the monthly history above — Allocated
     // and Spent are pure year totals (NOT rollover-adjusted; this
     // answers "how much went into/out of this space this calendar
     // year", independent of whatever carried in from prior years).
-    // endBalance is the rollover balance as of that year's last
-    // present month — a bonus figure showing where the space actually
-    // stood at year-end (or "so far" for the current, in-progress year).
-    const yearlyMap = {}; // 'yyyy' -> { allocated, spent, endBalance }
+    // available extends the same start-balance+allocated logic used
+    // monthly, just for the whole year. endBalance is the rollover
+    // balance as of that year's last present month.
+    const yearlyMap = {}; // 'yyyy' -> { allocated, spent, endBalance, monthCount }
     history.forEach(h => {
       const y = h.period.split('-')[0];
-      if (!yearlyMap[y]) yearlyMap[y] = { allocated: 0, spent: 0, endBalance: 0 };
+      if (!yearlyMap[y]) yearlyMap[y] = { allocated: 0, spent: 0, endBalance: 0, monthCount: 0 };
       yearlyMap[y].allocated += h.allocated;
       yearlyMap[y].spent     += h.spent;
       yearlyMap[y].endBalance = h.balance; // months are in ascending order, so the last write per year wins
+      yearlyMap[y].monthCount++;
     });
     const yearly = Object.keys(yearlyMap).sort().map(y => {
       const rec = yearlyMap[y];
+      const budgeted = budgetDef
+        ? (budgetDef.period === 'Yearly' ? budgetDef.budgetedEur : budgetDef.budgetedEur * rec.monthCount)
+        : null;
+      const available = (yearStartBalance[y] || 0) + rec.allocated;
       return {
         year:       y,
         allocated:  Math.round(rec.allocated),
         spent:      Math.round(rec.spent),
         net:        Math.round(rec.allocated - rec.spent),
-        endBalance: Math.round(rec.endBalance)
+        available:  Math.round(available),
+        endBalance: Math.round(rec.endBalance),
+        budgeted:   budgeted !== null ? Math.round(budgeted) : null
       };
     });
+
     return { category: cat, history: history, yearly: yearly };
   });
 
@@ -886,7 +931,7 @@ function n26Spaces(txns) {
   return {
     months: months, // for populating the month dropdown, oldest -> current
     years:  years,   // for populating the year dropdown, oldest -> current
-    spaces: spaces   // [{category, history: [{period, allocated, spent, available, balance}, ...], yearly: [{year, allocated, spent, net, endBalance}, ...]}]
+    spaces: spaces   // [{category, history: [{period, allocated, spent, available, balance, budgeted}, ...], yearly: [{year, allocated, spent, net, available, endBalance, budgeted}, ...]}]
   };
 }
 // ============================================================
