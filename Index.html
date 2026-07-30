@@ -344,6 +344,34 @@
     </div>
   </section>
   <!-- ═══════════════════════════════════════════════════════
+       N26 SPENDING SPACES  —  Hiral N26's virtual sub-account
+       "envelopes" (groceries, holiday, etc). Money moves in via a
+       tagged Transfer (Hiral Commerzbank → Hiral N26), moves out via
+       a tagged Expense from Hiral N26. Balances roll over month to
+       month — this reconstructs each space's balance from the ledger
+       since there's no live per-space balance in any bank feed.
+  ════════════════════════════════════════════════════════ -->
+  <section class="reveal reveal-4 mb-5">
+    <div class="card p-5 sm:p-7">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+        <div>
+          <div class="section-label mb-1">Hiral N26 · Daily spend</div>
+          <div class="text-2xl" style="font-weight: 800;">N26 Spending Spaces</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <div id="n26ViewToggle" class="flex items-center p-1 rounded-full" style="background: var(--card-inner);">
+            <button class="tab-btn active" onclick="setN26View('monthly', this)">Monthly</button>
+            <button class="tab-btn" onclick="setN26View('yearly', this)">Yearly</button>
+          </div>
+          <select id="n26MonthSelect" class="text-[12px] px-2.5 py-1.5 rounded-lg num" style="border: 1px solid var(--border-strong); background: var(--card-inner); font-weight: 600; color: var(--text);"></select>
+          <select id="n26YearSelect" class="text-[12px] px-2.5 py-1.5 rounded-lg num" style="display:none; border: 1px solid var(--border-strong); background: var(--card-inner); font-weight: 600; color: var(--text);"></select>
+        </div>
+      </div>
+      <div id="n26Meta" class="text-[11px] mb-4" style="color: var(--text-muted); font-weight: 500;"></div>
+      <div id="n26SpacesList" class="space-y-4"></div>
+    </div>
+  </section>
+  <!-- ═══════════════════════════════════════════════════════
        REMITTANCES  —  EUR → INR transfers (Commerzbank/N26 → SBI)
   ════════════════════════════════════════════════════════ -->
   <section class="reveal reveal-4 mb-5">
@@ -985,6 +1013,131 @@ renderBreakdown('expenseList', DATA.expense, '€');
   yearSelect.addEventListener('change', renderYearly);
   renderUnbudgeted();
   renderYearly();
+}
+// ── N26 Spending Spaces ────────────────────────────────────────
+// Monthly view: each space's Balance is a rolling total (allocated −
+// spent, carried forward month to month) reconstructed from tagged
+// Transfer/Expense rows — there's no live per-space balance anywhere
+// else to read from.
+// Yearly view: Allocated/Spent are pure calendar-year totals (not
+// rollover-adjusted) — "how much went into/out of this space this
+// year" — with the year-end rollover balance shown as a bonus figure.
+{
+  const n26 = DATA.n26Spaces || { months: [], years: [], spaces: [] };
+  const monthSelect = document.getElementById('n26MonthSelect');
+  const yearSelect  = document.getElementById('n26YearSelect');
+  const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const monthLabel = mk => {
+    const [y, m] = mk.split('-').map(Number);
+    return MONTH_ABBR[m - 1] + " '" + String(y).slice(-2);
+  };
+  monthSelect.innerHTML = n26.months.map(mk => `<option value="${mk}">${monthLabel(mk)}</option>`).join('');
+  if (n26.months.length) monthSelect.value = n26.months[n26.months.length - 1]; // default: current month
+  yearSelect.innerHTML = n26.years.map(y => `<option value="${y}">${y}</option>`).join('');
+  if (n26.years.length) yearSelect.value = n26.years[n26.years.length - 1]; // default: current year
+
+  let n26View = 'monthly';
+
+  function renderN26Monthly() {
+    const mk = monthSelect.value;
+    const rows = n26.spaces
+      .map(s => {
+        const h = s.history.find(x => x.period === mk);
+        return h ? Object.assign({ category: s.category }, h) : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.balance - a.balance);
+
+    document.getElementById('n26Meta').textContent = rows.length
+      ? rows.length + (rows.length === 1 ? ' space' : ' spaces')
+      : '';
+
+    if (!rows.length) {
+      document.getElementById('n26SpacesList').innerHTML = '<div class="text-sm" style="color: var(--text-muted);">No tagged Spending Space activity yet.</div>';
+      return;
+    }
+
+    document.getElementById('n26SpacesList').innerHTML = rows.map(r => {
+      const usedPct = r.available > 0 ? Math.min((r.spent / r.available) * 100, 100) : (r.spent > 0 ? 100 : 0);
+      const overspent = r.spent > r.available;
+      const barColor = overspent ? 'var(--red)' : (usedPct >= 80 ? 'var(--gold)' : 'var(--green)');
+      const balColor = r.balance < 0 ? 'var(--red-deep)' : 'var(--text)';
+      return `
+        <div>
+          <div class="flex items-baseline justify-between mb-1.5">
+            <span class="text-sm truncate" style="font-weight: 700;">${r.category}</span>
+            <div class="text-right shrink-0">
+              <div class="text-[10px]" style="color: var(--text-muted); font-weight: 600;">Balance</div>
+              <span class="num text-sm" style="font-weight: 800; color: ${balColor};">${fmtCcy(r.balance, 'EUR')}</span>
+            </div>
+          </div>
+          <div class="hbar"><span style="width: ${usedPct.toFixed(1)}%; background: ${barColor};"></span></div>
+          <div class="flex items-baseline justify-between mt-1.5">
+            <span class="num text-[11px]" style="color: var(--text-muted); font-weight: 500;">Spent ${fmtCcy(r.spent, 'EUR')} of ${fmtCcy(r.available, 'EUR')} available</span>
+            <span class="num text-[11px]" style="color: var(--text-muted); font-weight: 500;">+${fmtCcy(r.allocated, 'EUR')} this month</span>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function renderN26Yearly() {
+    const yr = yearSelect.value;
+    const rows = n26.spaces
+      .map(s => {
+        const h = s.yearly.find(x => x.year === yr);
+        return h ? Object.assign({ category: s.category }, h) : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.allocated - a.allocated);
+
+    document.getElementById('n26Meta').textContent = rows.length
+      ? rows.length + (rows.length === 1 ? ' space' : ' spaces')
+      : '';
+
+    if (!rows.length) {
+      document.getElementById('n26SpacesList').innerHTML = '<div class="text-sm" style="color: var(--text-muted);">No tagged activity in this year.</div>';
+      return;
+    }
+
+    document.getElementById('n26SpacesList').innerHTML = rows.map(r => {
+      const netColor = r.net < 0 ? 'var(--red-deep)' : 'var(--green-deep)';
+      const balColor = r.endBalance < 0 ? 'var(--red-deep)' : 'var(--text)';
+      const spentPct = r.allocated > 0 ? Math.min((r.spent / r.allocated) * 100, 100) : (r.spent > 0 ? 100 : 0);
+      const barColor = r.spent > r.allocated ? 'var(--red)' : (spentPct >= 80 ? 'var(--gold)' : 'var(--green)');
+      return `
+        <div>
+          <div class="flex items-baseline justify-between mb-1.5">
+            <span class="text-sm truncate" style="font-weight: 700;">${r.category}</span>
+            <div class="text-right shrink-0">
+              <div class="text-[10px]" style="color: var(--text-muted); font-weight: 600;">Year-end balance</div>
+              <span class="num text-sm" style="font-weight: 800; color: ${balColor};">${fmtCcy(r.endBalance, 'EUR')}</span>
+            </div>
+          </div>
+          <div class="hbar"><span style="width: ${spentPct.toFixed(1)}%; background: ${barColor};"></span></div>
+          <div class="flex items-baseline justify-between mt-1.5">
+            <span class="num text-[11px]" style="color: var(--text-muted); font-weight: 500;">Allocated ${fmtCcy(r.allocated, 'EUR')} · Spent ${fmtCcy(r.spent, 'EUR')}</span>
+            <span class="num text-[11px]" style="font-weight: 700; color: ${netColor};">${r.net >= 0 ? '+' : ''}${fmtCcy(r.net, 'EUR')} net</span>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function renderN26() {
+    if (n26View === 'monthly') renderN26Monthly(); else renderN26Yearly();
+  }
+
+  window.setN26View = function(view, btn) {
+    n26View = view;
+    btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    monthSelect.style.display = view === 'monthly' ? '' : 'none';
+    yearSelect.style.display  = view === 'yearly'  ? '' : 'none';
+    renderN26();
+  };
+
+  monthSelect.addEventListener('change', renderN26);
+  yearSelect.addEventListener('change', renderN26);
+  renderN26();
 }
 // ── Maintenance checklist ────────────────────────────────────
 // Server sends every bucket fully computed (Due now / Overdue / Upcoming /

@@ -176,6 +176,7 @@ function buildDashboardData() {
     passiveIncome: passiveIncome(walletTxns),
     remittance:    remittance(remits),
     budget:        budgetBreakdown(ss, accounts, txns, walletTxns),
+    n26Spaces:     n26Spaces(txns),
     maintenance:   maintenanceBreakdown(ss)
   };
 }
@@ -754,6 +755,138 @@ function budgetBreakdown(ss, accounts, txns, walletTxns) {
     monthly: monthly,  // [{category, history: [{period:'yyyy-MM', budgeted, actual, pct, status}, ...]}]
     yearly:  yearly,   // [{category, history: [{period:'yyyy',    budgeted, actual, pct, status}, ...]}]
     unbudgeted: unbudgeted // [{period:'yyyy-MM', amt}, ...]
+  };
+}
+// ============================================================
+// N26 SPENDING SPACES — Hiral N26's virtual sub-accounts ("spaces":
+// groceries, holiday, etc). Money moves in via a Transfer row
+// (Account = Hiral Commerzbank, Transfer To = Hiral N26) tagged with
+// Txn_Category = the space name; money moves out via an Expense row
+// (Account = Hiral N26) tagged with the same category. There's no
+// live per-space balance anywhere else to read from — this
+// reconstructs one from the ledger. Balances roll over: unspent
+// money in a space carries forward, so this computes a running total
+// of (allocated − spent) per month, starting from the earliest month
+// that has any tagged activity for that space (older, untagged
+// Transfer/Expense rows are simply ignored — a blank Txn_Category
+// never matches, so nothing from before this tagging practice began
+// gets miscounted).
+//
+// Filtering is by Account name, not the Currency column — both
+// Hiral Commerzbank and Hiral N26 are EUR accounts by definition, so
+// this sidesteps the Currency-column mislabeling issue documented in
+// cashflow() entirely, rather than needing another lookup for it.
+// ============================================================
+function n26Spaces(txns) {
+  const N26_ACCOUNT    = 'Hiral N26';
+  const SOURCE_ACCOUNT = 'Hiral Commerzbank';
+
+  const monthCat = {};      // 'yyyy-MM' -> { category -> { allocated, spent } }
+  const categorySet = new Set();
+  let earliestKey = null, latestKey = null;
+
+  function touch(key) {
+    if (!earliestKey || key < earliestKey) earliestKey = key;
+    if (!latestKey || key > latestKey) latestKey = key;
+  }
+
+  txns.forEach(t => {
+    const d = t.Date;
+    if (!(d instanceof Date)) return;
+    const acct = String(t.Account || '').trim();
+    const type = String(t.Type || '').trim().toLowerCase();
+    const cat  = String(t['Txn_Category'] || '').trim();
+    if (!cat) return; // untagged rows (pre-tagging history, or unrelated transfers) are ignored entirely
+
+    const isAllocation = type === 'transfer' && acct === SOURCE_ACCOUNT && String(t['Transfer To'] || '').trim() === N26_ACCOUNT;
+    const isSpend       = type === 'expense'  && acct === N26_ACCOUNT;
+    if (!isAllocation && !isSpend) return;
+
+    const key = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+    touch(key);
+    categorySet.add(cat);
+    if (!monthCat[key]) monthCat[key] = {};
+    if (!monthCat[key][cat]) monthCat[key][cat] = { allocated: 0, spent: 0 };
+
+    if (isAllocation) {
+      monthCat[key][cat].allocated += num(t.TransferIn) || num(t.Amount);
+    } else {
+      monthCat[key][cat].spent += num(t.Expense) || num(t.Amount);
+    }
+  });
+
+  if (!earliestKey) return { months: [], spaces: [] };
+
+  // Build a CONTINUOUS month list from earliest tagged activity through
+  // the current month — gaps must be included as zero-activity months,
+  // not skipped, or the rollover balance would silently jump periods.
+  const months = [];
+  {
+    const tz = Session.getScriptTimeZone();
+    const [ey, em] = earliestKey.split('-').map(Number);
+    const now = new Date();
+    const nowKey = Utilities.formatDate(now, tz, 'yyyy-MM');
+    const endKey = latestKey > nowKey ? latestKey : nowKey; // covers any future-dated entries
+    const [eY, eM] = endKey.split('-').map(Number);
+    const cursor = new Date(ey, em - 1, 1);
+    const end = new Date(eY, eM - 1, 1);
+    while (cursor <= end) {
+      months.push(Utilities.formatDate(cursor, tz, 'yyyy-MM'));
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+  }
+
+  const categories = Array.from(categorySet).sort();
+
+  const spaces = categories.map(cat => {
+    let running = 0;
+    const history = months.map(mk => {
+      const rec = (monthCat[mk] && monthCat[mk][cat]) || { allocated: 0, spent: 0 };
+      const startBalance = running;
+      const available = startBalance + rec.allocated;
+      running = available - rec.spent;
+      return {
+        period:    mk,
+        allocated: Math.round(rec.allocated),
+        spent:     Math.round(rec.spent),
+        available: Math.round(available),
+        balance:   Math.round(running)
+      };
+    });
+    // Yearly rollup, derived from the monthly history above — Allocated
+    // and Spent are pure year totals (NOT rollover-adjusted; this
+    // answers "how much went into/out of this space this calendar
+    // year", independent of whatever carried in from prior years).
+    // endBalance is the rollover balance as of that year's last
+    // present month — a bonus figure showing where the space actually
+    // stood at year-end (or "so far" for the current, in-progress year).
+    const yearlyMap = {}; // 'yyyy' -> { allocated, spent, endBalance }
+    history.forEach(h => {
+      const y = h.period.split('-')[0];
+      if (!yearlyMap[y]) yearlyMap[y] = { allocated: 0, spent: 0, endBalance: 0 };
+      yearlyMap[y].allocated += h.allocated;
+      yearlyMap[y].spent     += h.spent;
+      yearlyMap[y].endBalance = h.balance; // months are in ascending order, so the last write per year wins
+    });
+    const yearly = Object.keys(yearlyMap).sort().map(y => {
+      const rec = yearlyMap[y];
+      return {
+        year:       y,
+        allocated:  Math.round(rec.allocated),
+        spent:      Math.round(rec.spent),
+        net:        Math.round(rec.allocated - rec.spent),
+        endBalance: Math.round(rec.endBalance)
+      };
+    });
+    return { category: cat, history: history, yearly: yearly };
+  });
+
+  const years = Array.from(new Set(months.map(mk => mk.split('-')[0]))).sort();
+
+  return {
+    months: months, // for populating the month dropdown, oldest -> current
+    years:  years,   // for populating the year dropdown, oldest -> current
+    spaces: spaces   // [{category, history: [{period, allocated, spent, available, balance}, ...], yearly: [{year, allocated, spent, net, endBalance}, ...]}]
   };
 }
 // ============================================================
