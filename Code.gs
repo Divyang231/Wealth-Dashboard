@@ -174,7 +174,7 @@ function buildDashboardData() {
     recentTxns:    recentTxns(txns, 20),
     stocksDetail:  readStocksDetail(ss, accounts),
     passiveIncome: passiveIncome(walletTxns),
-    remittance:    remittance(remits),
+    remittance:    remittance(remits, accounts),
     budget:        budgetBreakdown(ss, accounts, txns, walletTxns),
     n26Spaces:     n26Spaces(ss, txns, accounts),
     maintenance:   maintenanceBreakdown(ss)
@@ -518,61 +518,81 @@ function parseWalletDate(v) {
   return isNaN(parsed) ? null : parsed;
 }
 // ============================================================
-// REMITTANCES ("Remmitance View" sheet)
-// Tracks EUR → INR transfers from the Commerzbank/N26 accounts into
-// the SBI accounts. The sheet's "Currency" column is inconsistently
-// labeled (INR/EUR/Eur/Euro all appear regardless of what was actually
-// sent), so it's ignored entirely. Instead the rate is always derived
-// as Credit INR ÷ Remmit Amount — this self-corrects the sheet's rate
-// column, which has occasional decimal-point-missing typos (e.g.
-// 89755 instead of 89.755); dividing INR by the EUR amount always
-// lands in the real 65–150 rate band without needing manual cleanup.
+// REMITTANCES ("Remmitance View" sheet) — BOTH directions
+// The view is a straight filter of Transactions rows with Type = "Remit",
+// so the columns keep their Transactions meaning:
+//   From Account  = sender            To Account    = receiver
+//   Remmit Amount = Amount            -> what was SENT, in the sender's currency
+//   Credit INR    = TransferIn        -> what was RECEIVED, in the receiver's
+//                                        currency (AppSheet sets TransferIn =
+//                                        the typed Remit_Amount for Remit rows)
+// (The "Credit INR" header is a legacy name — for an India -> Germany row it
+// holds euros.)
+//
+// Direction is derived from the SENDER's currency on the Account sheet
+// (EUR sender = "toIndia", INR sender = "toGermany"). The row's own Currency
+// column and the stored Remit_Rate are ignored — both are unreliable (mixed
+// INR/Eur/Euro labels, decimal-point typos). The rate is always recomputed
+// as INR per EUR from the two amounts, whichever way the money moved.
 // ============================================================
-function remittance(rows) {
-  const monthly = {}; // 'yyyy-MM' -> { inr, eur }
+function remittance(rows, accounts) {
+  const tz = Session.getScriptTimeZone();
+  const acctCurrency = buildAccountCurrencyMap(accounts || []);
   const entries = [];
-  let totalInr = 0, totalEur = 0, count = 0;
+  const sums = {
+    toIndia:   { inr: 0, eur: 0, count: 0 },
+    toGermany: { inr: 0, eur: 0, count: 0 }
+  };
   rows.forEach(r => {
     const d = r.Date;
     if (!(d instanceof Date)) return;
-    const eurAmt = num(r['Remmit Amount']);
-    const inrAmt = num(r['Credit INR']);
-    if (!eurAmt || !inrAmt) return;
-    const rate = inrAmt / eurAmt;
-    totalInr += inrAmt;
-    totalEur += eurAmt;
-    count++;
-    const key = Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM');
-    if (!monthly[key]) monthly[key] = { inr: 0, eur: 0 };
-    monthly[key].inr += inrAmt;
-    monthly[key].eur += eurAmt;
+    const sent     = num(r['Remmit Amount']);
+    const received = num(r['Credit INR']) || num(r['Remit_Amount']);
+    if (!sent || !received) return;
+    const fromName = String(r['From Account'] || '').trim();
+    const toName   = String(r['To Account'] || '').trim();
+    const fromCcy  = acctCurrency[normalizeAcctName(fromName)];
+    const toCcy    = acctCurrency[normalizeAcctName(toName)];
+    // Sender currency: the From account's own currency; if that account is
+    // missing from the Account sheet, infer it as the opposite of the To
+    // account's currency. Same-currency pairs aren't remittances.
+    const senderCcy = fromCcy || (toCcy ? (toCcy === 'EUR' ? 'INR' : 'EUR') : null);
+    if (!senderCcy || (fromCcy && toCcy && fromCcy === toCcy)) {
+      Logger.log('remittance: skipped row — cannot determine direction for "' + fromName + '" -> "' + toName + '" on ' + d);
+      return;
+    }
+    const dir    = senderCcy === 'EUR' ? 'toIndia' : 'toGermany';
+    const eurAmt = dir === 'toIndia' ? sent : received;
+    const inrAmt = dir === 'toIndia' ? received : sent;
+    const rate   = inrAmt / eurAmt; // always INR per EUR
+    if (rate < 40 || rate > 200) {
+      Logger.log('remittance: implausible rate ' + rate.toFixed(2) + ' for "' + fromName + '" -> "' + toName + '" on ' + d + ' (sent ' + sent + ', received ' + received + ')');
+    }
+    sums[dir].inr += inrAmt;
+    sums[dir].eur += eurAmt;
+    sums[dir].count++;
     entries.push({
-      date: Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
-      from: String(r['From Account'] || '').trim(),
-      to:   String(r['To Account'] || '').trim(),
-      eur:  Math.round(eurAmt),
-      inr:  Math.round(inrAmt),
+      date: Utilities.formatDate(d, tz, 'yyyy-MM-dd'),
+      from: fromName,
+      to:   toName,
+      dir:  dir,                              // 'toIndia' | 'toGermany'
+      eur:  Math.round(eurAmt * 100) / 100,   // the EUR side (sent or received)
+      inr:  Math.round(inrAmt),               // the INR side (received or sent)
       rate: Math.round(rate * 100) / 100
     });
   });
-  const monthlyArr = Object.keys(monthly).sort().map(k => ({
-    date: k + '-01',
-    inr:  Math.round(monthly[k].inr),
-    eur:  Math.round(monthly[k].eur),
-    rate: monthly[k].eur ? Math.round((monthly[k].inr / monthly[k].eur) * 100) / 100 : 0
-  }));
-  // Full history, most recent first — small dataset (dozens of rows,
-  // not thousands), so sending it all lets the client filter by any
-  // custom date range without another round trip to the sheet.
+  const summarize = s => ({
+    totalInr: Math.round(s.inr),
+    totalEur: Math.round(s.eur),
+    avgRate:  s.eur ? Math.round((s.inr / s.eur) * 100) / 100 : 0,
+    count:    s.count
+  });
+  // Full history, most recent first — small dataset (dozens of rows), so
+  // the client filters by any date range and direction without another
+  // round trip to the sheet.
   entries.sort((a, b) => b.date.localeCompare(a.date));
   return {
-    summary: {
-      totalInr: Math.round(totalInr),
-      totalEur: Math.round(totalEur),
-      avgRate:  totalEur ? Math.round((totalInr / totalEur) * 100) / 100 : 0,
-      count:    count
-    },
-    monthly: monthlyArr,
+    summary: { toIndia: summarize(sums.toIndia), toGermany: summarize(sums.toGermany) },
     entries: entries
   };
 }

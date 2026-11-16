@@ -377,12 +377,17 @@
   <section class="reveal reveal-4 mb-5">
     <div class="card p-5 sm:p-7">
       <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <div><div class="section-label">Overseas transfers</div><div class="text-2xl mt-0.5" style="font-weight: 800;">Remittances · EUR → INR</div></div>
+        <div><div class="section-label">Overseas transfers</div><div class="text-2xl mt-0.5" style="font-weight: 800;">Remittances · EUR ⇄ INR</div></div>
         <div id="remitRangeButtons" class="flex items-center gap-1 p-1 rounded-full" style="background: var(--card-inner);">
           <button class="tab-btn" onclick="setRemitRange(6, this)">6M</button>
           <button class="tab-btn active" onclick="setRemitRange(12, this)">1Y</button>
           <button class="tab-btn" onclick="setRemitRange('all', this)">All</button>
         </div>
+      </div>
+      <div id="remitDirButtons" class="flex items-center gap-1 p-1 rounded-full mb-3" style="background: var(--card-inner); width: fit-content;">
+        <button class="tab-btn active" onclick="setRemitDir('toIndia', this)">→ To India</button>
+        <button class="tab-btn" onclick="setRemitDir('toGermany', this)">← To Germany</button>
+        <button class="tab-btn" onclick="setRemitDir('both', this)">Both (net)</button>
       </div>
       <div class="flex flex-wrap items-center gap-2 mb-5">
         <span class="text-[11px]" style="color: var(--text-muted); font-weight: 600;">Custom range:</span>
@@ -393,9 +398,9 @@
       </div>
       <div class="chart-wrap chart-wrap-sm"><canvas id="remitChart"></canvas></div>
       <div class="grid grid-cols-3 gap-3 mt-5">
-        <div class="card-inner p-3.5"><div class="section-label">Total received</div><div id="remitTotalInr" class="num text-lg mt-1" style="font-weight: 800;"></div></div>
-        <div class="card-inner p-3.5"><div class="section-label">Total remitted</div><div id="remitTotalEur" class="num text-lg mt-1" style="font-weight: 800;"></div></div>
-        <div class="card-inner p-3.5"><div class="section-label">Avg rate</div><div id="remitAvgRate" class="num text-lg mt-1" style="font-weight: 800;"></div></div>
+        <div class="card-inner p-3.5"><div id="remitLblA" class="section-label">Total received</div><div id="remitTotalInr" class="num text-lg mt-1" style="font-weight: 800;"></div><div id="remitSubA" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div></div>
+        <div class="card-inner p-3.5"><div id="remitLblB" class="section-label">Total remitted</div><div id="remitTotalEur" class="num text-lg mt-1" style="font-weight: 800;"></div><div id="remitSubB" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div></div>
+        <div class="card-inner p-3.5"><div id="remitLblC" class="section-label">Avg rate</div><div id="remitAvgRate" class="num text-lg mt-1" style="font-weight: 800;"></div><div id="remitSubC" class="text-[11px] mt-1" style="color: var(--text-muted); font-weight: 500;"></div></div>
       </div>
       <div class="mt-5 pt-4" style="border-top: 1px solid var(--border);">
         <div class="flex items-baseline justify-between mb-1">
@@ -775,45 +780,55 @@ updateHeroNumber();
   renderCashflowYear();
 }
 // ── Remittances ──────────────────────────────────────────────
+// Handles BOTH directions. Each entry carries dir: 'toIndia' (EUR sent,
+// INR received) or 'toGermany' (INR sent, EUR received); eur/inr are always
+// the EUR-side / INR-side amounts and rate is always INR per EUR. A
+// direction toggle (To India / To Germany / Both-net) and the date range
+// (presets or custom) both feed one render path, so chart, tiles and list
+// always agree. Entries from an older Code.gs without dir default to toIndia.
 {
-  const ENTRIES = (DATA.remittance && DATA.remittance.entries) || []; // full history, most recent first
+  const ENTRIES = ((DATA.remittance && DATA.remittance.entries) || []).map(e => Object.assign({ dir: 'toIndia' }, e)); // full history, most recent first
   const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const remitMonthLabel = s => {
     const dt = parseISODate(s);
     return MONTH_ABBR[dt.getMonth()] + " '" + String(dt.getFullYear()).slice(-2);
   };
   const isoDate = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const fmtEurAmt = n => (n < 0 ? '−' : '') + '€' + Math.abs(n).toLocaleString('de-DE', { maximumFractionDigits: 2 });
+  let remitDir = 'toIndia';      // default view = original EUR -> INR behaviour
+  let remitRangeState = null;    // { from, to, label } of the range currently shown
+  const lineStyle = color => ({
+    type: 'line', data: [], borderColor: color, backgroundColor: 'transparent', borderWidth: 2,
+    pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: color,
+    pointBorderColor: '#fff', pointBorderWidth: 1, tension: 0.3, spanGaps: true,
+    yAxisID: 'y1', order: 1
+  });
   const remitChart = new Chart(document.getElementById('remitChart'), {
     type: 'bar',
     data: {
       labels: [],
       datasets: [
-        {
-          type: 'bar', label: 'INR received', data: [],
-          backgroundColor: '#3b82f6', borderRadius: 6, barPercentage: 0.6, categoryPercentage: 0.6,
-          yAxisID: 'y', order: 2
-        },
-        {
-          type: 'line', label: 'Avg € rate', data: [],
-          borderColor: '#f97316', backgroundColor: 'transparent', borderWidth: 2,
-          pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: '#f97316',
-          pointBorderColor: '#fff', pointBorderWidth: 1, tension: 0.3,
-          yAxisID: 'y1', order: 1
-        }
+        // 0: INR side of To India transfers (received)
+        { type: 'bar', label: 'INR received', data: [], backgroundColor: '#3b82f6', borderRadius: 6, barPercentage: 0.6, categoryPercentage: 0.6, yAxisID: 'y', order: 2 },
+        // 1: INR side of To Germany transfers (sent) — drawn downward in Both view
+        { type: 'bar', label: 'INR sent', data: [], backgroundColor: '#14b8a6', borderRadius: 6, barPercentage: 0.6, categoryPercentage: 0.6, yAxisID: 'y', order: 2 },
+        // 2 / 3: weighted average rate per direction
+        Object.assign(lineStyle('#f97316'), { label: 'Avg € rate' }),
+        Object.assign(lineStyle('#8b5cf6'), { label: 'Avg € rate ←' })
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { intersect: false, mode: 'index' },
       plugins: {
-        legend: { display: false },
+        legend: { display: false, labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } },
         tooltip: {
           backgroundColor: '#1a1d1f', borderWidth: 0, padding: { x: 12, y: 8 }, cornerRadius: 10,
           titleColor: '#ffffff', bodyColor: '#ffffff',
           callbacks: {
             label: c => c.dataset.yAxisID === 'y1'
-              ? '  Avg rate: ₹' + c.parsed.y.toFixed(2) + '/€'
-              : '  ' + fmtINR(c.parsed.y)
+              ? '  ' + c.dataset.label + ': ₹' + c.parsed.y.toFixed(2) + '/€'
+              : '  ' + c.dataset.label + ': ' + fmtINR(Math.abs(c.parsed.y))
           }
         }
       },
@@ -824,9 +839,9 @@ updateHeroNumber();
       }
     }
   });
-  // Buckets already-date-filtered entries into monthly totals + a
-  // weighted average rate per month (sum INR ÷ sum EUR — same method
-  // used for the all-time avg, not a naive average of individual rates).
+  // Buckets already-filtered entries into monthly INR totals + a weighted
+  // average rate per month (sum INR ÷ sum EUR — same method as the overall
+  // average, not a naive average of individual rates). Run per direction.
   function bucketByMonth(list) {
     const buckets = {};
     list.forEach(e => {
@@ -841,37 +856,93 @@ updateHeroNumber();
       rate: buckets[k].eur ? buckets[k].inr / buckets[k].eur : 0
     }));
   }
-  // Single render path for BOTH the preset buttons and the custom date
-  // range — chart, the three summary tiles, and the list all recompute
-  // from whatever's inside [fromDate, toDate], so nothing goes stale.
+  const sumOf  = (list, k) => list.reduce((s, e) => s + e[k], 0);
+  const rateOf = list => { const eur = sumOf(list, 'eur'); return eur ? sumOf(list, 'inr') / eur : 0; };
+  const rateTxt = r => r ? '₹' + r.toFixed(2) : '—';
+  const setText = (id, t) => { document.getElementById(id).textContent = t; };
+  // Single render path for the preset buttons, the custom date range AND the
+  // direction toggle — chart, the three summary tiles and the list all
+  // recompute from the entries inside [fromDate, toDate] for the chosen
+  // direction, so nothing goes stale.
   function renderRange(fromDate, toDate, metaLabel) {
-    const filtered = ENTRIES.filter(e => {
+    remitRangeState = { from: fromDate, to: toDate, label: metaLabel };
+    const inRange = ENTRIES.filter(e => {
       const d = parseISODate(e.date);
       return d >= fromDate && d <= toDate;
     });
-    const rows = bucketByMonth(filtered);
-    remitChart.data.labels = rows.map(d => remitMonthLabel(d.date));
-    remitChart.data.datasets[0].data = rows.map(d => d.inr);
-    remitChart.data.datasets[1].data = rows.map(d => Math.round(d.rate * 100) / 100);
+    const fwd  = inRange.filter(e => e.dir === 'toIndia');
+    const back = inRange.filter(e => e.dir === 'toGermany');
+    const shown = remitDir === 'both' ? inRange : (remitDir === 'toIndia' ? fwd : back);
+    // Chart
+    const showFwd = remitDir !== 'toGermany', showBack = remitDir !== 'toIndia';
+    const mFwd  = showFwd  ? bucketByMonth(fwd)  : [];
+    const mBack = showBack ? bucketByMonth(back) : [];
+    const byKey = rows => { const m = {}; rows.forEach(r => { m[r.date] = r; }); return m; };
+    const fMap = byKey(mFwd), bMap = byKey(mBack);
+    const keys = Array.from(new Set(mFwd.concat(mBack).map(r => r.date))).sort();
+    const ds = remitChart.data.datasets;
+    remitChart.data.labels = keys.map(remitMonthLabel);
+    ds[0].label = remitDir === 'both' ? 'INR received (→ India)' : 'INR received';
+    ds[1].label = remitDir === 'both' ? 'INR sent (← Germany)' : 'INR sent';
+    ds[2].label = remitDir === 'both' ? 'Avg € rate →' : 'Avg € rate';
+    ds[3].label = 'Avg € rate ←';
+    ds[0].data = keys.map(k => fMap[k] ? fMap[k].inr : null);
+    ds[1].data = keys.map(k => bMap[k] ? (remitDir === 'both' ? -bMap[k].inr : bMap[k].inr) : null);
+    ds[2].data = keys.map(k => fMap[k] ? Math.round(fMap[k].rate * 100) / 100 : null);
+    ds[3].data = keys.map(k => bMap[k] ? Math.round(bMap[k].rate * 100) / 100 : null);
+    // Single-direction views show only that direction's bars + rate line.
+    remitChart.options.plugins.legend.display = remitDir === 'both';
     remitChart.update();
-    const totalInr = filtered.reduce((s, e) => s + e.inr, 0);
-    const totalEur = filtered.reduce((s, e) => s + e.eur, 0);
-    const avgRate  = totalEur ? totalInr / totalEur : 0;
-    document.getElementById('remitTotalInr').textContent = fmtINR(Math.round(totalInr));
-    document.getElementById('remitTotalEur').textContent = '€' + Math.round(totalEur).toLocaleString('de-DE');
-    document.getElementById('remitAvgRate').textContent  = totalEur ? '₹' + avgRate.toFixed(2) : '—';
-    document.getElementById('remitMeta').textContent      = filtered.length + ' transfers · ' + metaLabel;
-    document.getElementById('remitList').innerHTML = filtered.length ? filtered.map(r => {
+    // Summary tiles — Received / Sent for one direction, Net for Both
+    ['remitSubA','remitSubB','remitSubC'].forEach(id => setText(id, ''));
+    if (remitDir === 'toIndia') {
+      setText('remitLblA', 'Total received');
+      setText('remitLblB', 'Total remitted');
+      setText('remitLblC', 'Avg rate');
+      setText('remitTotalInr', fmtINR(Math.round(sumOf(fwd, 'inr'))));
+      setText('remitTotalEur', fmtEurAmt(Math.round(sumOf(fwd, 'eur'))));
+      setText('remitAvgRate', rateTxt(rateOf(fwd)));
+    } else if (remitDir === 'toGermany') {
+      setText('remitLblA', 'Total received');
+      setText('remitLblB', 'Total sent');
+      setText('remitLblC', 'Avg rate');
+      setText('remitTotalInr', fmtEurAmt(Math.round(sumOf(back, 'eur'))));
+      setText('remitTotalEur', fmtINR(Math.round(sumOf(back, 'inr'))));
+      setText('remitAvgRate', rateTxt(rateOf(back)));
+    } else {
+      // Consolidated view: money that came back cancels money that went out.
+      // Parts are rounded first so the shown arithmetic always adds up.
+      const eurOut = Math.round(sumOf(fwd, 'eur')),  eurBack = Math.round(sumOf(back, 'eur'));
+      const inrIn  = Math.round(sumOf(fwd, 'inr')),  inrBack = Math.round(sumOf(back, 'inr'));
+      setText('remitLblA', 'Net ₹ in India');
+      setText('remitLblB', 'Net € sent from Germany');
+      setText('remitLblC', 'Avg rate → / ←');
+      setText('remitTotalInr', fmtINR(inrIn - inrBack));
+      setText('remitTotalEur', fmtEurAmt(eurOut - eurBack));
+      setText('remitAvgRate', rateTxt(rateOf(fwd)) + ' / ' + rateTxt(rateOf(back)));
+      setText('remitSubA', fmtINR(inrIn) + ' received − ' + fmtINR(inrBack) + ' sent back');
+      setText('remitSubB', fmtEurAmt(eurOut) + ' sent − ' + fmtEurAmt(eurBack) + ' received back');
+      setText('remitSubC', fwd.length + ' → India · ' + back.length + ' ← Germany');
+    }
+    const dirLabel = remitDir === 'toIndia' ? 'to India' : (remitDir === 'toGermany' ? 'to Germany' : 'both directions');
+    setText('remitMeta', shown.length + (shown.length === 1 ? ' transfer' : ' transfers') + ' · ' + dirLabel + ' · ' + metaLabel);
+    document.getElementById('remitList').innerHTML = shown.length ? shown.map(r => {
+      const toGer   = r.dir === 'toGermany';
+      const recvTxt = toGer ? fmtEurAmt(r.eur) : fmtINR(r.inr);
+      const sentTxt = toGer ? fmtINR(r.inr) : fmtEurAmt(r.eur);
       const dayLabel = parseISODate(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const pill = remitDir === 'both'
+        ? `<span class="pill ${toGer ? 'pill-orange' : 'pill-green'} shrink-0" style="font-size: 10px; padding: 2px 8px; margin-left: 6px;">${toGer ? '← Germany' : '→ India'}</span>`
+        : '';
       return `
         <div class="flex items-center justify-between py-3" style="border-top: 1px solid var(--border);">
           <div class="min-w-0 pr-3">
-            <div class="text-sm truncate" style="font-weight: 600;">${r.from} → ${r.to}</div>
+            <div class="text-sm truncate" style="font-weight: 600;">${r.from} → ${r.to}${pill}</div>
             <div class="text-[11px] mt-0.5" style="color: var(--text-muted); font-weight: 500;">${dayLabel} · ₹${r.rate.toFixed(2)}/€</div>
           </div>
           <div class="text-right shrink-0">
-            <div class="num text-sm" style="font-weight: 700;">${fmtINR(r.inr)}</div>
-            <div class="num text-[11px]" style="color: var(--text-muted); font-weight: 500;">€${r.eur.toLocaleString('de-DE')}</div>
+            <div class="num text-sm" style="font-weight: 700;">${recvTxt}</div>
+            <div class="num text-[11px]" style="color: var(--text-muted); font-weight: 500;">${sentTxt} sent</div>
           </div>
         </div>`;
     }).join('') : '<div class="text-sm" style="color: var(--text-muted);">No remittances in this range.</div>';
@@ -912,7 +983,14 @@ updateHeroNumber();
     document.querySelectorAll('#remitRangeButtons .tab-btn').forEach(b => b.classList.remove('active'));
     renderRange(parseISODate(fromVal), parseISODate(toVal), 'custom range');
   };
-  // Initial render: default 1Y, matching the active preset button
+  // Direction toggle: re-renders the range currently on screen.
+  window.setRemitDir = function(dir, btn) {
+    btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    remitDir = dir;
+    if (remitRangeState) renderRange(remitRangeState.from, remitRangeState.to, remitRangeState.label);
+  };
+  // Initial render: default 1Y + To India, matching the active buttons
   {
     const to = new Date();
     const from = new Date();
